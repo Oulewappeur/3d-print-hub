@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 
 /**
- * FIREBASE CONFIGURATIE (Jouw specifieke gegevens)
+ * FIREBASE CONFIGURATIE
  */
 const myFirebaseConfig = {
   apiKey: "AIzaSyBbwO5zFRzKg_TeFSTGjm_G7OPitUtnDo0",
@@ -53,11 +53,22 @@ const myFirebaseConfig = {
   measurementId: "G-RJW0M8NF7Y"
 };
 
+/**
+ * FIREBASE SECURITY RULES INSTRUCTIE:
+ * Kopieer de onderstaande regels naar je Firebase Console -> Firestore -> Rules:
+ * * service cloud.firestore {
+ * match /databases/{database}/documents {
+ * match /artifacts/d-printer-orders-1b6f3/{document=**} {
+ * allow read, write: if request.auth != null;
+ * }
+ * }
+ * }
+ */
+
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
   ? JSON.parse(__firebase_config) 
   : myFirebaseConfig;
 
-// Gebruik de projectID als fallback voor hubId om consistentie te garanderen
 const hubId = typeof __app_id !== 'undefined' ? __app_id : 'd-printer-orders-1b6f3';
 
 const app = initializeApp(firebaseConfig);
@@ -82,8 +93,8 @@ export default function App() {
   const [filaments, setFilaments] = useState([]);
   const [settings, setSettings] = useState({ kwhPrice: 0.35, printerWattage: 150 });
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState(null);
 
-  // 1. Authenticatie (MANDATORY RULE 3)
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -94,6 +105,7 @@ export default function App() {
         }
       } catch (err) {
         console.error("Auth error:", err);
+        setErrorMessage("Authenticatie mislukt. Schakel 'Anonymous Auth' in in de Firebase Console.");
         setLoading(false);
       }
     };
@@ -106,7 +118,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Data synchronisatie (MANDATORY RULE 1)
   useEffect(() => {
     if (!user) return;
 
@@ -116,7 +127,12 @@ export default function App() {
       (snapshot) => {
         setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       }, 
-      (err) => console.error("Orders sync error:", err)
+      (err) => {
+        console.error("Orders sync error:", err);
+        if (err.code === 'permission-denied') {
+          setErrorMessage("Toegang geweigerd door Security Rules. Update je regels in de Firebase Console.");
+        }
+      }
     );
 
     const unsubProducts = onSnapshot(query(getPath('products')), 
@@ -153,15 +169,24 @@ export default function App() {
   }, [user]);
 
   const addItem = async (coll, data) => {
-    if (!user) return;
+    if (!user) {
+      setErrorMessage("Niet verbonden. Kan niet opslaan.");
+      return;
+    }
     try {
       await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), {
         ...data,
         status: data.status || 'actief',
         createdAt: new Date().toISOString()
       });
+      setErrorMessage(null);
     } catch (e) {
       console.error("Fout bij opslaan:", e);
+      if (e.code === 'permission-denied') {
+        setErrorMessage("Security Rules blokkeren het opslaan. Controleer de Rules in Firebase.");
+      } else {
+        setErrorMessage(`Opslaan mislukt: ${e.message}`);
+      }
     }
   };
 
@@ -171,6 +196,9 @@ export default function App() {
       await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data);
     } catch (e) {
       console.error("Fout bij updaten:", e);
+      if (e.code === 'permission-denied') {
+        setErrorMessage("Update geweigerd door Security Rules.");
+      }
     }
   };
 
@@ -239,8 +267,18 @@ export default function App() {
           );
         })}
         
-        <div className="mt-auto p-4 bg-slate-50 rounded-2xl text-[10px] text-slate-400 font-mono break-all opacity-50 border border-slate-100 text-center">
-          Verbonden met project:<br/>{hubId}
+        <div className="mt-auto p-4 bg-slate-50 rounded-2xl text-[10px] text-slate-400 font-mono break-all border border-slate-100">
+          <div className="mb-2 flex items-center justify-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${user ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span className="font-bold uppercase tracking-widest">{user ? 'Online' : 'Offline'}</span>
+          </div>
+          Project: {hubId}
+          {errorMessage && (
+            <div className="mt-2 p-2 bg-red-100 text-red-600 rounded text-[9px] font-bold">
+              <AlertTriangle size={10} className="inline mr-1 mb-0.5" />
+              {errorMessage}
+            </div>
+          )}
         </div>
       </nav>
 
@@ -275,12 +313,10 @@ function Dashboard({ orders, products, filaments, settings }) {
 
       const prod = products.find(p => p.id === order.productId);
       if (prod) {
-        // Bereken kosten voor alle gekoppelde filamenten
         let materialCostForOne = 0;
         const linkedFilaments = filaments.filter(f => prod.filamentIds?.includes(f.id));
         
         if (linkedFilaments.length > 0) {
-          // Verdeel gewicht over het aantal kleuren
           const weightPerFilament = prod.weight / linkedFilaments.length;
           linkedFilaments.forEach(f => {
             materialCostForOne += (weightPerFilament / f.totalWeight) * f.price;
@@ -521,7 +557,7 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
     name: '', 
     weight: '', 
     printTime: '', 
-    filamentIds: [], // Nu een array voor meerdere kleuren
+    filamentIds: [], 
     suggestedPrice: '' 
   });
 
@@ -654,7 +690,7 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ 
     brand: '', 
-    materialType: '', // Nu een vrij tekstveld
+    materialType: '', 
     colorName: '', 
     colorCode: '#9333ea', 
     totalWeight: 1000, 
