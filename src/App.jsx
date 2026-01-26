@@ -57,7 +57,8 @@ const firebaseConfig = typeof __firebase_config !== 'undefined'
   ? JSON.parse(__firebase_config) 
   : myFirebaseConfig;
 
-const hubId = typeof __app_id !== 'undefined' ? __app_id : '3d-hub-production-v1';
+// Gebruik de projectID als fallback voor hubId om consistentie te garanderen
+const hubId = typeof __app_id !== 'undefined' ? __app_id : 'd-printer-orders-1b6f3';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -72,7 +73,6 @@ const TABS = {
 };
 
 const ORDER_STATUSES = ['In de wacht', 'Printen', 'Gereed', 'Afgerond'];
-const MATERIAL_TYPES = ['PLA', 'PETG', 'TPU', 'ABS', 'ASA', 'Nylon', 'Carbon', 'Anders'];
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -83,6 +83,7 @@ export default function App() {
   const [settings, setSettings] = useState({ kwhPrice: 0.35, printerWattage: 150 });
   const [loading, setLoading] = useState(true);
 
+  // 1. Authenticatie (MANDATORY RULE 3)
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -105,6 +106,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 2. Data synchronisatie (MANDATORY RULE 1)
   useEffect(() => {
     if (!user) return;
 
@@ -152,26 +154,42 @@ export default function App() {
 
   const addItem = async (coll, data) => {
     if (!user) return;
-    await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), {
-      ...data,
-      status: data.status || 'actief',
-      createdAt: new Date().toISOString()
-    });
+    try {
+      await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), {
+        ...data,
+        status: data.status || 'actief',
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Fout bij opslaan:", e);
+    }
   };
 
   const updateItem = async (coll, id, data) => {
     if (!user) return;
-    await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data);
+    try {
+      await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data);
+    } catch (e) {
+      console.error("Fout bij updaten:", e);
+    }
   };
 
   const deleteItem = async (coll, id) => {
     if (!user) return;
-    await deleteDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id));
+    try {
+      await deleteDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id));
+    } catch (e) {
+      console.error("Fout bij verwijderen:", e);
+    }
   };
 
   const saveSettings = async (data) => {
     if (!user) return;
-    await setDoc(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), data);
+    try {
+      await setDoc(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), data);
+    } catch (e) {
+      console.error("Fout bij instellingen opslaan:", e);
+    }
   };
 
   if (loading) {
@@ -221,8 +239,8 @@ export default function App() {
           );
         })}
         
-        <div className="mt-auto p-4 bg-slate-50 rounded-2xl text-[10px] text-slate-400 font-mono break-all opacity-50 border border-slate-100">
-          User: {user?.uid || 'Niet verbonden'}
+        <div className="mt-auto p-4 bg-slate-50 rounded-2xl text-[10px] text-slate-400 font-mono break-all opacity-50 border border-slate-100 text-center">
+          Verbonden met project:<br/>{hubId}
         </div>
       </nav>
 
@@ -257,10 +275,20 @@ function Dashboard({ orders, products, filaments, settings }) {
 
       const prod = products.find(p => p.id === order.productId);
       if (prod) {
-        const fil = filaments.find(f => f.id === prod.defaultFilamentId);
-        const filCost = fil ? (prod.weight / fil.totalWeight) * fil.price : 0;
+        // Bereken kosten voor alle gekoppelde filamenten
+        let materialCostForOne = 0;
+        const linkedFilaments = filaments.filter(f => prod.filamentIds?.includes(f.id));
+        
+        if (linkedFilaments.length > 0) {
+          // Verdeel gewicht over het aantal kleuren
+          const weightPerFilament = prod.weight / linkedFilaments.length;
+          linkedFilaments.forEach(f => {
+            materialCostForOne += (weightPerFilament / f.totalWeight) * f.price;
+          });
+        }
+        
         const energyCost = (prod.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice;
-        totalCost += (filCost + energyCost) * qty;
+        totalCost += (materialCostForOne + energyCost) * qty;
       }
     });
 
@@ -297,8 +325,8 @@ function Dashboard({ orders, products, filaments, settings }) {
             <Clock size={24} className="text-purple-600" /> Recente Orders
           </h2>
           <div className="space-y-4">
-            {orders.length === 0 ? <p className="text-slate-400 italic">Geen data beschikbaar.</p> : orders.slice(0, 5).map(order => (
-              <div key={order.id} className="flex justify-between items-center p-5 bg-slate-50 rounded-3xl border border-transparent hover:border-slate-200 transition-all">
+            {orders.length === 0 ? <p className="text-slate-400 italic text-center py-10">Nog geen bestellingen opgeslagen.</p> : orders.slice(0, 5).map(order => (
+              <div key={order.id} className="flex justify-between items-center p-5 bg-slate-50 rounded-3xl border border-transparent transition-all">
                 <div>
                   <p className="font-bold text-slate-900 text-lg leading-tight">{order.customer}</p>
                   <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">
@@ -330,7 +358,7 @@ function Dashboard({ orders, products, filaments, settings }) {
                     <div>
                       <div className="flex items-center gap-2">
                          <p className="font-black text-slate-800 text-base leading-none">{fil.brand}</p>
-                         <span className="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded font-black">{fil.materialType || 'PLA'}</span>
+                         <span className="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded font-black uppercase">{fil.materialType || 'PLA'}</span>
                       </div>
                       <p className="text-xs text-slate-400 font-bold mt-1.5 uppercase tracking-wider">{fil.colorName}</p>
                     </div>
@@ -489,20 +517,43 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
 
 function ProductList({ products, filaments, settings, onAdd, onDelete }) {
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({ name: '', weight: '', printTime: '', defaultFilamentId: '', suggestedPrice: '' });
+  const [formData, setFormData] = useState({ 
+    name: '', 
+    weight: '', 
+    printTime: '', 
+    filamentIds: [], // Nu een array voor meerdere kleuren
+    suggestedPrice: '' 
+  });
 
   const calculateCosts = (p) => {
-    const fil = filaments.find(f => f.id === p.defaultFilamentId);
-    const filCost = fil ? (p.weight / fil.totalWeight) * fil.price : 0;
+    let materialCost = 0;
+    const linkedFilaments = filaments.filter(f => p.filamentIds?.includes(f.id));
+    
+    if (linkedFilaments.length > 0) {
+      const weightPerFil = p.weight / linkedFilaments.length;
+      linkedFilaments.forEach(f => {
+        materialCost += (weightPerFil / f.totalWeight) * f.price;
+      });
+    }
+
     const energyCost = (p.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice;
-    return { fil: filCost, energy: energyCost, total: filCost + energyCost };
+    return { fil: materialCost, energy: energyCost, total: materialCost + energyCost };
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onAdd('products', { ...formData, weight: Number(formData.weight), printTime: Number(formData.printTime), suggestedPrice: Number(formData.suggestedPrice) });
     setShowModal(false);
-    setFormData({ name: '', weight: '', printTime: '', defaultFilamentId: '', suggestedPrice: '' });
+    setFormData({ name: '', weight: '', printTime: '', filamentIds: [], suggestedPrice: '' });
+  };
+
+  const toggleFilament = (id) => {
+    setFormData(prev => ({
+      ...prev,
+      filamentIds: prev.filamentIds.includes(id) 
+        ? prev.filamentIds.filter(fid => fid !== id)
+        : [...prev.filamentIds, id]
+    }));
   };
 
   return (
@@ -517,10 +568,23 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
           return (
             <div key={product.id} className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 group relative transition-all hover:shadow-xl hover:-translate-y-1">
               <h3 className="text-2xl font-black mb-2 text-slate-900">{product.name}</h3>
-              <div className="flex gap-4 mb-10 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
+              <div className="flex gap-4 mb-4 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
                 <span>{product.weight}g</span>
                 <span>{product.printTime}m</span>
               </div>
+              
+              <div className="flex flex-wrap gap-2 mb-8">
+                {product.filamentIds?.map(fid => {
+                  const f = filaments.find(fil => fil.id === fid);
+                  return f ? (
+                    <div key={fid} className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: f.colorCode }}></div>
+                      <span className="text-[9px] font-black uppercase text-slate-500">{f.brand}</span>
+                    </div>
+                  ) : null;
+                })}
+              </div>
+
               <div className="grid grid-cols-2 gap-5 mb-8">
                 <div className="bg-slate-50 p-4 rounded-2xl text-center">
                   <p className="text-[10px] font-black text-slate-400 uppercase">Kostprijs</p>
@@ -547,11 +611,33 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
                 <input required type="number" placeholder="Gewicht (g)" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold shadow-inner" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} />
                 <input required type="number" placeholder="Tijd (min)" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold shadow-inner" value={formData.printTime} onChange={e => setFormData({...formData, printTime: e.target.value})} />
               </div>
-              <select className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold shadow-inner" value={formData.defaultFilamentId} onChange={e => setFormData({...formData, defaultFilamentId: e.target.value})}>
-                <option value="">Filament...</option>
-                {filaments.filter(f => f.status === 'actief').map(f => <option key={f.id} value={f.id}>{f.brand} {f.colorName}</option>)}
-              </select>
+              
+              <div className="space-y-3">
+                <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Selecteer Filamenten (Meerdere kleuren mogelijk)</label>
+                <div className="grid grid-cols-2 gap-3 max-h-40 overflow-y-auto p-2 bg-slate-50 rounded-3xl shadow-inner">
+                  {filaments.filter(f => f.status === 'actief').map(f => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => toggleFilament(f.id)}
+                      className={`flex items-center gap-2 p-3 rounded-2xl border-2 transition-all text-left ${
+                        formData.filamentIds.includes(f.id) 
+                          ? 'border-purple-500 bg-purple-50' 
+                          : 'border-transparent bg-white'
+                      }`}
+                    >
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: f.colorCode }}></div>
+                      <div className="flex-1 truncate">
+                        <p className="text-[10px] font-black uppercase leading-none">{f.brand}</p>
+                        <p className="text-[9px] text-slate-400 font-bold truncate">{f.colorName}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <input required type="number" step="0.01" placeholder="Verkoopprijs (€)" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-black text-2xl text-center shadow-inner" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} />
+              
               <div className="flex gap-6 pt-8">
                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-5 text-slate-400 font-black uppercase tracking-widest">Annuleren</button>
                 <button type="submit" className="flex-1 py-6 bg-purple-600 text-white rounded-[1.5rem] font-black text-xl shadow-2xl shadow-purple-100 border-none" style={{ backgroundColor: '#9333ea' }}>OPSLAAN</button>
@@ -568,7 +654,7 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ 
     brand: '', 
-    materialType: 'PLA', 
+    materialType: '', // Nu een vrij tekstveld
     colorName: '', 
     colorCode: '#9333ea', 
     totalWeight: 1000, 
@@ -580,7 +666,7 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
     e.preventDefault();
     onAdd('filaments', { ...formData, usedWeight: 0, price: Number(formData.price), status: 'actief' });
     setShowModal(false);
-    setFormData({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '' });
+    setFormData({ brand: '', materialType: '', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '' });
   };
 
   const activeFilaments = filaments.filter(f => (showArchived ? f.status === 'leeg' : f.status === 'actief'));
@@ -608,7 +694,7 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                      <h3 className="text-2xl font-black text-slate-900 leading-tight">{fil.brand}</h3>
-                     <span className="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded-lg font-black">{fil.materialType || 'PLA'}</span>
+                     <span className="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded-lg font-black uppercase">{fil.materialType || 'PLA'}</span>
                   </div>
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 mt-2 tracking-widest">
                     <div className="w-5 h-5 rounded-full border-2 border-slate-100 shadow-sm" style={{ backgroundColor: fil.colorCode }}></div>
@@ -655,10 +741,8 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
                   <input required placeholder="Bijv. eSun" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Materiaal Soort</label>
-                  <select required className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})}>
-                    {MATERIAL_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                  </select>
+                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Materiaal Soort (Tekst)</label>
+                  <input required placeholder="Bijv. PLA+, PETG, Carbon" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner uppercase" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} />
                 </div>
               </div>
               <div className="space-y-2">
