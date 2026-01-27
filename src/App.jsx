@@ -449,58 +449,159 @@ function StatCard({ title, value, icon, color, bg }) {
 
 function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({ customer: '', messengerLink: '', productId: '', price: '', quantity: 1, status: 'In de wacht', orderDate: new Date().toISOString().split('T')[0] });
+  const [editingId, setEditingId] = useState(null);
+  const [formData, setFormData] = useState({ 
+    customer: '', 
+    messengerLink: '', 
+    productId: '', 
+    price: '', 
+    quantity: 1, 
+    status: 'In de wacht', 
+    orderDate: new Date().toISOString().split('T')[0] 
+  });
+
+  const resetForm = () => {
+    setFormData({ 
+      customer: '', 
+      messengerLink: '', 
+      productId: '', 
+      price: '', 
+      quantity: 1, 
+      status: 'In de wacht', 
+      orderDate: new Date().toISOString().split('T')[0] 
+    });
+    setEditingId(null);
+  };
+
+  const handleEdit = (order) => {
+    setFormData({ ...order });
+    setEditingId(order.id);
+    setShowModal(true);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    onAdd('orders', { ...formData, price: Number(formData.price), quantity: Number(formData.quantity) });
+    const finalData = { ...formData, price: Number(formData.price), quantity: Number(formData.quantity) };
+    
+    if (editingId) {
+      onUpdate('orders', editingId, finalData);
+    } else {
+      onAdd('orders', finalData);
+    }
     setShowModal(false);
+    resetForm();
   };
+
   return (
     <div className="space-y-6">
-      <button onClick={() => setShowModal(true)} className="text-white px-10 py-4 rounded-2xl flex items-center gap-3 font-bold shadow-xl border-none outline-none active:scale-95 transition-all uppercase text-sm italic" style={{ backgroundColor: '#9333ea' }}>
+      <button 
+        onClick={() => { resetForm(); setShowModal(true); }} 
+        className="text-white px-10 py-4 rounded-2xl flex items-center gap-3 font-bold shadow-xl border-none outline-none active:scale-95 transition-all uppercase text-sm italic" 
+        style={{ backgroundColor: '#9333ea' }}
+      >
         <Plus size={20} strokeWidth={3} /> Bestelling Invoeren
       </button>
+
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left min-w-[600px]">
           <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b border-slate-100">
-            <tr><th className="px-8 py-5">Klant & Link</th><th className="px-8 py-5">Product Details</th><th className="px-8 py-5">Status</th><th className="px-8 py-5 text-right">Beheer</th></tr>
+            <tr>
+              <th className="px-8 py-5">Klant & Link</th>
+              <th className="px-8 py-5">Product Details</th>
+              <th className="px-8 py-5">Status</th>
+              <th className="px-8 py-5 text-right">Beheer</th>
+            </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 font-bold">
             {orders.sort((a,b) => new Date(b.orderDate) - new Date(a.orderDate)).map(order => (
               <tr key={order.id} className="hover:bg-slate-50/30 transition-colors">
                 <td className="px-8 py-6">
                   <div className="flex items-center gap-3">
-                    <div><p className="text-slate-900">{order.customer}</p><p className="text-[10px] text-slate-400 uppercase tracking-wider">{order.orderDate}</p></div>
-                    {order.messengerLink && <a href={order.messengerLink} target="_blank" rel="noreferrer" className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-all"><MessageCircle size={18} /></a>}
+                    <div>
+                      <p className="text-slate-900">{order.customer}</p>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider">{order.orderDate}</p>
+                    </div>
+                    {order.messengerLink && (
+                      <a href={order.messengerLink} target="_blank" rel="noreferrer" className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-all">
+                        <MessageCircle size={18} />
+                      </a>
+                    )}
                   </div>
                 </td>
-                <td className="px-8 py-6"><p className="text-slate-700 text-sm italic">{products.find(p => p.id === order.productId)?.name || 'Onbekend'}</p><p className="text-[10px] text-purple-500 font-black mt-1 uppercase">€{(order.price * order.quantity).toFixed(2)} ({order.quantity}x)</p></td>
                 <td className="px-8 py-6">
-                  <select value={order.status} onChange={(e) => onUpdate('orders', order.id, { status: e.target.value })} className="bg-transparent border-0 text-[10px] font-black uppercase text-purple-600 outline-none cursor-pointer">
+                  <p className="text-slate-700 text-sm italic">{products.find(p => p.id === order.productId)?.name || 'Onbekend'}</p>
+                  <p className="text-[10px] text-purple-500 font-black mt-1 uppercase">€{(order.price * order.quantity).toFixed(2)} ({order.quantity}x)</p>
+                </td>
+                <td className="px-8 py-6">
+                  <select 
+                    value={order.status} 
+                    onChange={(e) => onUpdate('orders', order.id, { status: e.target.value })} 
+                    className="bg-transparent border-0 text-[10px] font-black uppercase text-purple-600 outline-none cursor-pointer"
+                  >
                     {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </td>
-                <td className="px-8 py-6 text-right"><button onClick={() => onDelete('orders', order.id)} className="text-slate-200 hover:text-rose-500 border-none bg-transparent outline-none ring-0 p-2"><Trash2 size={20} /></button></td>
+                <td className="px-8 py-6 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <button 
+                      onClick={() => handleEdit(order)} 
+                      className="p-2 text-slate-300 hover:text-purple-600 border-none bg-transparent outline-none ring-0"
+                    >
+                      <Edit3 size={18} />
+                    </button>
+                    <button 
+                      onClick={() => onDelete('orders', order.id)} 
+                      className="text-slate-200 hover:text-rose-500 border-none bg-transparent outline-none ring-0 p-2"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {showModal && <Modal title="Nieuwe Bestelling" onClose={() => setShowModal(false)}>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-2 gap-4"><Input label="Klant Naam" value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} required /><Input label="Datum" type="date" value={formData.orderDate} onChange={e => setFormData({...formData, orderDate: e.target.value})} required /></div>
-          <Input label="Messenger Link" placeholder="Social media link..." value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
-          <select required className="w-full p-4 bg-slate-50 rounded-2xl outline-none border-none font-bold shadow-inner" value={formData.productId} onChange={e => {
-            const p = products.find(prod => prod.id === e.target.value);
-            setFormData({...formData, productId: e.target.value, price: p?.suggestedPrice || ''});
-          }}>
-            <option value="">Selecteer product...</option>
-            {products.filter(p => p.status !== 'gearchiveerd').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          <div className="grid grid-cols-2 gap-4"><Input label="Aantal" type="number" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required /><Input label="Prijs p/s (€)" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required /></div>
-          <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl border-none outline-none active:scale-95 transition-all" style={{ backgroundColor: '#9333ea' }}>Bestelling Opslaan</button>
-        </form>
-      </Modal>}
+
+      {showModal && (
+        <Modal title={editingId ? "Bestelling Bewerken" : "Nieuwe Bestelling"} onClose={() => setShowModal(false)}>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Klant Naam" value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} required />
+              <Input label="Datum" type="date" value={formData.orderDate} onChange={e => setFormData({...formData, orderDate: e.target.value})} required />
+            </div>
+            <Input label="Messenger Link" placeholder="Social media link..." value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
+            
+            <select 
+              required 
+              className="w-full p-4 bg-slate-50 rounded-2xl outline-none border-none font-bold shadow-inner" 
+              value={formData.productId} 
+              onChange={e => {
+                const p = products.find(prod => prod.id === e.target.value);
+                setFormData({...formData, productId: e.target.value, price: p?.suggestedPrice || ''});
+              }}
+            >
+              <option value="">Selecteer product...</option>
+              {products.filter(p => p.status !== 'gearchiveerd').map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Aantal" type="number" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />
+              <Input label="Prijs p/s (€)" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required />
+            </div>
+
+            <button 
+              type="submit" 
+              className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl border-none outline-none active:scale-95 transition-all" 
+              style={{ backgroundColor: '#9333ea' }}
+            >
+              {editingId ? "Bestelling Bijwerken" : "Bestelling Opslaan"}
+            </button>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }
