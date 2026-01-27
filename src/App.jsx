@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, 
@@ -44,7 +44,9 @@ import {
   ChevronDown,
   Layers,
   Search,
-  MessageCircle
+  MessageCircle,
+  FileCode,
+  Upload
 } from 'lucide-react';
 
 // Firebase Configuratie
@@ -58,12 +60,13 @@ const myFirebaseConfig = {
   measurementId: "G-RJW0M8NF7Y"
 };
 
+// Gebruik de omgevingsconfiguratie indien beschikbaar (voor Canvas), anders jouw eigen config
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
   ? JSON.parse(__firebase_config) 
   : myFirebaseConfig;
 
-// BELANGRIJK: We forceren de hubId naar jouw project-ID zodat de Rules altijd matchen
-const hubId = 'd-printer-orders-1b6f3'; 
+// Gebruik het dynamische appId van de omgeving, of jouw eigen project-ID als fallback
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'd-printer-orders-1b6f3';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -79,6 +82,33 @@ const TABS = {
 
 const ORDER_STATUSES = ['In de wacht', 'Printen', 'Gereed', 'Afgerond'];
 
+// G-code Parser Utility
+const parseGCodeMetadata = (text) => {
+  const result = { time: 0, weight: 0, multiMaterial: [] };
+  const timeMatch = text.match(/estimated printing time.*=\s*(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?/i);
+  if (timeMatch) {
+    const hours = parseInt(timeMatch[1] || 0);
+    const mins = parseInt(timeMatch[2] || 0);
+    result.time = (hours * 60) + mins;
+  } else {
+    const curaTimeMatch = text.match(/;TIME:(\d+)/i);
+    if (curaTimeMatch) result.time = Math.round(parseInt(curaTimeMatch[1]) / 60);
+  }
+  const weightMatches = [...text.matchAll(/filament used \[g\]\s*=\s*([\d.]+)/gi)];
+  if (weightMatches.length > 0) {
+    if (weightMatches.length > 1) {
+      result.multiMaterial = weightMatches.map(m => parseFloat(m[1]));
+      result.weight = result.multiMaterial.reduce((a, b) => a + b, 0);
+    } else {
+      result.weight = parseFloat(weightMatches[0][1]);
+    }
+  } else {
+    const curaFilamentMatch = text.match(/;Filament used:\s*([\d.]+)/i);
+    if (curaFilamentMatch) result.weight = Math.round(parseFloat(curaFilamentMatch[1]) * 2.98);
+  }
+  return result;
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState(TABS.DASHBOARD);
@@ -89,7 +119,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // AUTHENTICATIE (Rule 3: Auth Before Queries)
+  // STAP 1: Authenticatie (MANDATORY RULE 3)
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -106,49 +136,46 @@ export default function App() {
     };
     initAuth();
     
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
     });
     return () => unsubscribe();
   }, []);
 
-  // DATA FETCHING (Start pas als 'user' er is)
+  // STAP 2: Data ophalen (MANDATORY RULE 3)
   useEffect(() => {
     if (!user) return;
 
-    const getPath = (name) => collection(db, 'artifacts', hubId, 'public', 'data', name);
+    const getPath = (name) => collection(db, 'artifacts', appId, 'public', 'data', name);
 
-    // Orders Listener met error handling
     const unsubOrders = onSnapshot(query(getPath('orders')), 
       (snapshot) => {
         setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        setErrorMessage(null);
         setLoading(false);
+        setErrorMessage(null);
       }, 
       (err) => {
-        console.error("Firestore error:", err);
-        if (err.code === 'permission-denied') {
-          setErrorMessage("Toegang geweigerd. Controleer of je Rules exact overeenkomen met het pad /artifacts/" + hubId + "/...");
-        }
+        console.error("Orders Error:", err);
+        setErrorMessage("Toegang geweigerd voor bestellingen.");
         setLoading(false);
       }
     );
 
     const unsubProducts = onSnapshot(query(getPath('products')), 
       (snapshot) => setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
-      (err) => console.error("Products error:", err)
+      (err) => console.error("Products Error:", err)
     );
 
     const unsubFilaments = onSnapshot(query(getPath('filaments')), 
       (snapshot) => setFilaments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
-      (err) => console.error("Filaments error:", err)
+      (err) => console.error("Filaments Error:", err)
     );
 
-    const unsubSettings = onSnapshot(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), 
+    const unsubSettings = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), 
       (docSnap) => {
         if (docSnap.exists()) setSettings(docSnap.data());
       }, 
-      (err) => console.error("Settings error:", err)
+      (err) => console.error("Settings Error:", err)
     );
 
     return () => { 
@@ -162,37 +189,48 @@ export default function App() {
   const addItem = async (coll, data) => {
     if (!user) return;
     try {
-      if (coll === 'filaments' && data.quantity > 1) {
-        const { quantity, ...singleData } = data;
-        for (let i = 0; i < quantity; i++) {
-          await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), { ...singleData, status: 'actief', createdAt: new Date().toISOString() });
-        }
-      } else {
-        await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), { ...data, status: data.status || 'actief', createdAt: new Date().toISOString() });
-      }
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', coll), { 
+        ...data, 
+        status: data.status || 'actief', 
+        createdAt: new Date().toISOString() 
+      });
     } catch (e) {
-      console.error("Add error:", e);
+      console.error(e);
     }
   };
 
-  const updateItem = async (coll, id, data) => { if (!user) return; try { await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data); } catch (e) {} };
-  const deleteItem = async (coll, id) => { if (!user) return; try { await deleteDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id)); } catch (e) {} };
-  const saveSettings = async (data) => { if (!user) return; try { await setDoc(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), data); } catch (e) {} };
+  const updateItem = async (coll, id, data) => { 
+    if (!user) return; 
+    try { 
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', coll, id), data); 
+    } catch (e) { console.error(e); } 
+  };
 
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-white font-sans">
-        <div className="text-center">
-          <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Authenticeren...</p>
-        </div>
+  const deleteItem = async (coll, id) => { 
+    if (!user) return; 
+    try { 
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', coll, id)); 
+    } catch (e) { console.error(e); } 
+  };
+
+  const saveSettings = async (data) => { 
+    if (!user) return; 
+    try { 
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), data); 
+    } catch (e) { console.error(e); } 
+  };
+
+  if (loading) return (
+    <div className="flex h-screen items-center justify-center bg-white font-sans">
+      <div className="text-center">
+        <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Authenticeren...</p>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#FDFCFE] flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
-      {/* Sidebar Menu */}
       <nav className="w-full md:w-72 bg-white border-r border-slate-100 p-6 flex flex-col gap-2 z-20 shadow-sm overflow-y-auto">
         <div className="text-xl font-black text-purple-600 mb-10 flex items-center gap-3 px-2">
           <div className="p-2 bg-purple-600 rounded-xl text-white shadow-md shadow-purple-100">
@@ -234,8 +272,9 @@ export default function App() {
           <div className="mt-auto p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-[10px] font-bold flex flex-col gap-2">
             <div className="flex items-start gap-2">
                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-               <span>{errorMessage}</span>
+               <span>Toegangfout in Canvas</span>
             </div>
+            <p className="font-medium opacity-80">{errorMessage}</p>
           </div>
         )}
       </nav>
@@ -249,8 +288,8 @@ export default function App() {
         </header>
 
         {activeTab === TABS.DASHBOARD && <Dashboard orders={orders} products={products} filaments={filaments} settings={settings} />}
-        {activeTab === TABS.ORDERS && <OrderList orders={orders} products={products} filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
-        {activeTab === TABS.CATALOG && <ProductList products={products} filaments={filaments} settings={settings} onAdd={addItem} onDelete={deleteItem} />}
+        {activeTab === TABS.ORDERS && <OrderList orders={orders} products={products} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
+        {activeTab === TABS.CATALOG && <ProductList products={products} filaments={filaments} onAdd={addItem} onDelete={deleteItem} />}
         {activeTab === TABS.STOCK && <StockTable filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
         {activeTab === TABS.SETTINGS && <SettingsPanel settings={settings} onSave={saveSettings} />}
       </main>
@@ -261,7 +300,6 @@ export default function App() {
 function Dashboard({ orders, products, filaments, settings }) {
   const stats = useMemo(() => {
     const openOrders = orders.filter(o => o.status !== 'Afgerond').length;
-    const readyOrders = orders.filter(o => o.status === 'Gereed').length;
     let totalRevenue = 0;
     let totalCost = 0;
 
@@ -282,60 +320,19 @@ function Dashboard({ orders, products, filaments, settings }) {
     });
 
     const criticalFilaments = filaments.filter(f => f.status === 'actief' && ((f.totalWeight - (f.usedWeight || 0)) / (f.totalWeight || 1)) < 0.15);
-    return { openOrders, readyOrders, totalRevenue, totalProfit: totalRevenue - totalCost, activePrints: orders.filter(o => o.status === 'Printen').length, criticalFilaments };
+    return { openOrders, totalRevenue, totalProfit: totalRevenue - totalCost, criticalFilaments };
   }, [orders, products, filaments, settings]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        <StatCard title="Open" value={stats.openOrders} icon={<Clock size={20} />} color="text-orange-600" bg="bg-orange-50" />
-        <StatCard title="Printen" value={stats.activePrints} icon={<Printer size={20} />} color="text-purple-600" bg="bg-purple-50" />
-        <StatCard title="Gereed" value={stats.readyOrders} icon={<CheckCircle2 size={20} />} color="text-emerald-600" bg="bg-emerald-50" />
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <StatCard title="Open Orders" value={stats.openOrders} icon={<Clock size={20} />} color="text-orange-600" bg="bg-orange-50" />
         <StatCard title="Omzet" value={`€${stats.totalRevenue.toFixed(2)}`} icon={<Euro size={20} />} color="text-purple-600" bg="bg-purple-50" />
         <StatCard title="Winst" value={`€${stats.totalProfit.toFixed(2)}`} icon={<TrendingUp size={20} />} color="text-indigo-600" bg="bg-indigo-50" />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-        <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-          <h2 className="text-lg font-black mb-6 flex items-center gap-2 uppercase italic tracking-tight"><Clock size={18} className="text-purple-600"/> Recente Orders</h2>
-          <div className="space-y-4">
-            {orders.slice(0, 5).map(o => (
-              <div key={o.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-transparent hover:border-purple-100 transition-all">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <p className="font-bold text-slate-900">{o.customer}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{o.quantity}x {products.find(p => p.id === o.productId)?.name || 'Product'}</p>
-                  </div>
-                  {o.messengerLink && (
-                    <a href={o.messengerLink} target="_blank" rel="noreferrer" className="p-2 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200 transition-colors">
-                      <ExternalLink size={14} />
-                    </a>
-                  )}
-                </div>
-                <span className={`text-[9px] font-black uppercase px-2.5 py-1.5 rounded-xl ${o.status === 'Gereed' ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-500 shadow-sm border border-slate-100'}`}>{o.status}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-          <h2 className="text-lg font-black mb-6 flex items-center gap-2 uppercase italic tracking-tight"><Database size={18} className="text-purple-600"/> Laag in Voorraad</h2>
-          <div className="space-y-6">
-            {stats.criticalFilaments.length === 0 ? <p className="text-xs text-slate-400 italic py-10 text-center">Alle voorraad is voldoende.</p> : stats.criticalFilaments.slice(0, 4).map(f => {
-              const rem = f.totalWeight - (f.usedWeight || 0);
-              const perc = (rem / f.totalWeight) * 100;
-              return (
-                <div key={f.id} className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                    <span>{f.brand} {f.colorName}</span>
-                    <span className="text-rose-600">{Math.round(rem)}g over</span>
-                  </div>
-                  <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                    <div className="h-full bg-rose-500 transition-all duration-1000 shadow-lg shadow-rose-200" style={{ width: `${Math.max(0, perc)}%` }}></div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-center">
+          <AlertTriangle size={20} className={stats.criticalFilaments.length > 0 ? "text-rose-500 animate-pulse" : "text-slate-300"} />
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Voorraad Alerts</p>
+          <p className="text-2xl font-black text-slate-900 italic">{stats.criticalFilaments.length}</p>
         </div>
       </div>
     </div>
@@ -346,44 +343,34 @@ function StatCard({ title, value, icon, color, bg }) {
   return (
     <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-center gap-2 hover:shadow-lg transition-all duration-300">
       <div className={`p-4 ${bg} ${color} rounded-2xl shadow-sm`}>{icon}</div>
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mt-2">{title}</p>
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mt-2 text-center">{title}</p>
       <p className="text-2xl font-black text-slate-900 tracking-tighter italic">{value}</p>
     </div>
   );
 }
 
-function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
+function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({ 
-    customer: '', 
-    messengerLink: '', 
-    productId: '', 
-    price: '', 
-    quantity: 1, 
-    status: 'In de wacht', 
-    comments: '', 
-    orderDate: new Date().toISOString().split('T')[0] 
-  });
+  const [formData, setFormData] = useState({ customer: '', messengerLink: '', productId: '', price: '', quantity: 1, status: 'In de wacht', orderDate: new Date().toISOString().split('T')[0] });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onAdd('orders', { ...formData, price: Number(formData.price), quantity: Number(formData.quantity) });
     setShowModal(false);
-    setFormData({ customer: '', messengerLink: '', productId: '', price: '', quantity: 1, status: 'In de wacht', comments: '', orderDate: new Date().toISOString().split('T')[0] });
   };
 
   return (
     <div className="space-y-6">
       <button 
         onClick={() => setShowModal(true)} 
-        className="text-white px-10 py-4 rounded-2xl flex items-center gap-3 font-bold shadow-xl shadow-purple-100 border-none outline-none ring-0 transition-all uppercase text-sm italic active:scale-95"
+        className="text-white px-10 py-4 rounded-2xl flex items-center gap-3 font-bold shadow-xl border-none active:scale-95 transition-all uppercase text-sm italic" 
         style={{ backgroundColor: '#9333ea' }}
       >
         <Plus size={20} strokeWidth={3} /> Bestelling Invoeren
       </button>
 
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-        <table className="w-full text-left">
+      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
+        <table className="w-full text-left min-w-[600px]">
           <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b border-slate-100">
             <tr>
               <th className="px-8 py-5">Klant & Link</th>
@@ -398,8 +385,8 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
                 <td className="px-8 py-6">
                   <div className="flex items-center gap-3">
                     <div>
-                      <p className="text-slate-900 text-base">{order.customer}</p>
-                      <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wider">{order.orderDate}</p>
+                      <p className="text-slate-900">{order.customer}</p>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">{order.orderDate}</p>
                     </div>
                     {order.messengerLink && (
                       <a href={order.messengerLink} target="_blank" rel="noreferrer" className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-all">
@@ -416,7 +403,7 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
                   <select 
                     value={order.status} 
                     onChange={(e) => onUpdate('orders', order.id, { status: e.target.value })} 
-                    className="bg-transparent border-0 text-[10px] font-black uppercase text-purple-600 outline-none cursor-pointer focus:ring-0"
+                    className="bg-transparent border-0 text-[10px] font-black uppercase text-purple-600 outline-none cursor-pointer"
                   >
                     {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -437,10 +424,10 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
               <Input label="Klant Naam" value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} required />
               <Input label="Datum" type="date" value={formData.orderDate} onChange={e => setFormData({...formData, orderDate: e.target.value})} required />
             </div>
-            <Input label="Messenger/Social Link" placeholder="Plak hier de link naar het gesprek..." value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
+            <Input label="Messenger Link" placeholder="Plak link naar gesprek..." value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-slate-400 ml-3 mb-1 block">Product uit Catalogus</label>
-              <select required className="w-full p-4 bg-slate-50 rounded-2xl outline-none border-none font-bold appearance-none shadow-inner text-slate-700" value={formData.productId} onChange={e => {
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-3 block">Product</label>
+              <select required className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold shadow-inner" value={formData.productId} onChange={e => {
                 const p = products.find(prod => prod.id === e.target.value);
                 setFormData({...formData, productId: e.target.value, price: p?.suggestedPrice || ''});
               }}>
@@ -452,7 +439,101 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
               <Input label="Aantal" type="number" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />
               <Input label="Prijs p/s (€)" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required />
             </div>
-            <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl shadow-purple-200 border-none outline-none ring-0 transition-all active:scale-95" style={{ backgroundColor: '#9333ea' }}>Bestelling Opslaan</button>
+            <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl border-none outline-none active:scale-95 transition-all" style={{ backgroundColor: '#9333ea' }}>Opslaan</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ProductList({ products, filaments, onAdd, onDelete }) {
+  const [showModal, setShowModal] = useState(false);
+  const [formData, setFormData] = useState({ name: '', weight: '', printTime: '', filamentIds: [], suggestedPrice: '' });
+  const [parsing, setParsing] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setParsing(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const meta = parseGCodeMetadata(ev.target.result);
+      setFormData(prev => ({ ...prev, weight: meta.weight || prev.weight, printTime: meta.time || prev.printTime }));
+      setParsing(false);
+    };
+    reader.readAsText(file);
+  };
+
+  const groupedFilaments = useMemo(() => {
+    const res = {};
+    filaments.filter(f => f.status === 'actief').forEach(f => {
+      const key = `${f.brand}-${f.colorName}`;
+      if (!res[key]) res[key] = { ...f, rolls: [] };
+      res[key].rolls.push(f);
+    });
+    return Object.values(res);
+  }, [filaments]);
+
+  const toggleFilament = (id) => setFormData(prev => ({ ...prev, filamentIds: prev.filamentIds.includes(id) ? prev.filamentIds.filter(fid => fid !== id) : [...prev.filamentIds, id] }));
+
+  return (
+    <div className="space-y-10 animate-in fade-in duration-500">
+      <button onClick={() => setShowModal(true)} className="text-white px-10 py-4 rounded-2xl flex items-center gap-3 font-bold shadow-xl border-none active:scale-95 transition-all uppercase text-sm italic" style={{ backgroundColor: '#9333ea' }}>
+        <Plus size={20} strokeWidth={3} /> Nieuw Product
+      </button>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {products.map(p => (
+          <div key={p.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative group hover:shadow-xl transition-all">
+            <h3 className="text-xl font-black italic uppercase text-slate-800">{p.name}</h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6">{p.weight}g • {p.printTime}m</p>
+            <div className="flex flex-wrap gap-2 mb-8">
+              {p.filamentIds?.map(fid => {
+                const f = filaments.find(fil => fil.id === fid);
+                return f ? <div key={fid} className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: f.colorCode }}></div> : null;
+              })}
+            </div>
+            <div className="flex items-end justify-between">
+              <div className="bg-purple-50 px-6 py-4 rounded-2xl border border-purple-100/50">
+                <p className="text-[9px] font-black text-purple-400 uppercase text-center tracking-widest mb-1">Adviesprijs</p>
+                <p className="text-2xl font-black text-purple-600 italic">€{(p.suggestedPrice || 0).toFixed(2)}</p>
+              </div>
+              <button onClick={() => onDelete('products', p.id)} className="text-slate-200 hover:text-rose-500 border-none bg-transparent outline-none ring-0 p-2"><Trash2 size={22}/></button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showModal && (
+        <Modal title="Product Toevoegen" onClose={() => setShowModal(false)}>
+          <div className="mb-8 p-6 bg-purple-50 rounded-3xl border border-dashed border-purple-300 text-center">
+            <input type="file" accept=".gcode" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center gap-2 w-full text-purple-600 hover:text-purple-800 transition-colors">
+              {parsing ? <RefreshCw className="animate-spin" /> : <Upload size={32} />}
+              <p className="text-[10px] font-black uppercase tracking-widest">{parsing ? "Parsing G-code..." : "Lees G-code bestand in"}</p>
+            </button>
+          </div>
+          <form onSubmit={(e) => { e.preventDefault(); onAdd('products', { ...formData, weight: Number(formData.weight), printTime: Number(formData.printTime), suggestedPrice: Number(formData.suggestedPrice) }); setShowModal(false); }} className="space-y-6">
+            <Input label="Naam Product" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Gewicht (g)" type="number" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} required />
+              <Input label="Print Tijd (min)" type="number" value={formData.printTime} onChange={e => setFormData({...formData, printTime: e.target.value})} required />
+            </div>
+            <div className="space-y-3">
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-3">Gekoppelde Filamenten</label>
+              <div className="max-h-48 overflow-y-auto p-4 bg-slate-50 rounded-[2rem] space-y-4 shadow-inner">
+                {groupedFilaments.map(g => g.rolls.map(roll => (
+                  <button key={roll.id} type="button" onClick={() => toggleFilament(roll.id)} className={`p-4 w-full mb-2 rounded-2xl text-[10px] font-black uppercase flex items-center gap-3 transition-all ${formData.filamentIds.includes(roll.id) ? 'text-white' : 'bg-white text-slate-500'}`} style={{ backgroundColor: formData.filamentIds.includes(roll.id) ? '#9333ea' : undefined }}>
+                    <div className="w-3.5 h-3.5 rounded-full border border-white" style={{ backgroundColor: roll.colorCode }}></div>
+                    <span>{g.brand} {g.colorName} (#{roll.id.slice(-4)})</span>
+                  </button>
+                )))}
+              </div>
+            </div>
+            <Input label="Verkoopprijs (€)" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} required />
+            <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl border-none outline-none active:scale-95 transition-all" style={{ backgroundColor: '#9333ea' }}>Product Opslaan</button>
           </form>
         </Modal>
       )}
@@ -462,255 +543,83 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
 
 function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState({});
-  const [showArchived, setShowArchived] = useState(false);
+  const [expanded, setExpanded] = useState({});
+  const [archived, setArchived] = useState(false);
   const [formData, setFormData] = useState({ brand: '', materialType: '', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shopName: '', quantity: 1 });
 
   const grouped = useMemo(() => {
-    const groups = {};
-    filaments.filter(f => (showArchived ? f.status === 'leeg' : f.status === 'actief')).forEach(f => {
-      const key = `${f.brand}-${f.materialType}-${f.colorName}`;
-      if (!groups[key]) groups[key] = { ...f, rolls: [] };
-      groups[key].rolls.push(f);
+    const res = {};
+    filaments.filter(f => (archived ? f.status === 'leeg' : f.status === 'actief')).forEach(f => {
+      const k = `${f.brand}-${f.materialType}-${f.colorName}`;
+      if (!res[k]) res[k] = { ...f, rolls: [] };
+      res[k].rolls.push(f);
     });
-    return Object.values(groups);
-  }, [filaments, showArchived]);
-
-  const toggleGroup = (key) => setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
+    return Object.values(res);
+  }, [filaments, archived]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onAdd('filaments', { ...formData, usedWeight: 0, price: Number(formData.price) });
     setShowModal(false);
-    setFormData({ brand: '', materialType: '', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shopName: '', quantity: 1 });
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <button 
-          onClick={() => setShowModal(true)} 
-          className="text-white px-10 py-4 rounded-2xl flex items-center gap-3 font-bold shadow-xl shadow-purple-100 border-none outline-none ring-0 transition-all uppercase text-sm italic active:scale-95"
-          style={{ backgroundColor: '#9333ea' }}
-        >
-          <Plus size={20} strokeWidth={3} /> Rol Toevoegen
+      <div className="flex justify-between gap-4">
+        <button onClick={() => setShowModal(true)} className="text-white px-10 py-4 rounded-2xl font-bold shadow-xl border-none active:scale-95 transition-all uppercase text-sm italic" style={{ backgroundColor: '#9333ea' }}>
+          <Plus size={20} className="inline mr-2" /> Rol Toevoegen
         </button>
-        <button 
-          onClick={() => setShowArchived(!showArchived)} 
-          className="text-[10px] font-black uppercase text-slate-400 border-none bg-transparent outline-none flex items-center gap-2 hover:text-purple-600 transition-colors ring-0"
-        >
-          <Archive size={14} /> {showArchived ? 'Terug naar Actieve Rollen' : 'Toon Lege Rollen'}
+        <button onClick={() => setArchived(!archived)} className="text-[10px] font-black uppercase text-slate-400 border-none bg-transparent flex items-center gap-2 hover:text-purple-600 transition-colors">
+          <Archive size={14} /> {archived ? 'Actief' : 'Archief'}
         </button>
       </div>
-
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-        <table className="w-full text-left">
+      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
+        <table className="w-full text-left min-w-[600px]">
           <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b border-slate-100">
-            <tr>
-              <th className="px-8 py-5 w-16">Kleur</th>
-              <th className="px-8 py-5">Omschrijving</th>
-              <th className="px-8 py-5">Rollen</th>
-              <th className="px-8 py-5">Totaal (g)</th>
-              <th className="px-8 py-5 text-right">Beheer</th>
-            </tr>
+            <tr><th className="px-8 py-5">Kleur</th><th className="px-8 py-5">Omschrijving</th><th className="px-8 py-5">Voorraad</th><th className="px-8 py-5 text-right">Actie</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {grouped.map(group => {
-              const key = `${group.brand}-${group.colorName}`;
-              const isExpanded = expandedGroups[key];
-              const totalRemaining = group.rolls.reduce((acc, r) => acc + (r.totalWeight - (r.usedWeight || 0)), 0);
-
+            {grouped.map(g => {
+              const k = `${g.brand}-${g.colorName}`;
+              const isEx = expanded[k];
+              const rem = g.rolls.reduce((a, r) => a + (r.totalWeight - (r.usedWeight || 0)), 0);
               return (
-                <React.Fragment key={key}>
-                  <tr onClick={() => toggleGroup(key)} className="cursor-pointer hover:bg-slate-50/50 transition-all group">
-                    <td className="px-8 py-6">
-                      <div className="w-8 h-8 rounded-xl shadow-sm border border-slate-200" style={{ backgroundColor: group.colorCode }}></div>
-                    </td>
-                    <td className="px-8 py-6">
-                      <p className="font-bold text-slate-900 text-base">{group.brand} {group.materialType}</p>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{group.colorName}</p>
-                    </td>
-                    <td className="px-8 py-6 text-slate-500 font-bold">
-                      <div className="flex items-center gap-2">
-                        <Layers size={14} className="text-purple-400" />
-                        <span className="text-sm">{group.rolls.length} Rollen</span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-6">
-                      <p className="font-black text-slate-800 text-lg tracking-tighter italic">{Math.round(totalRemaining)}g</p>
-                    </td>
-                    <td className="px-8 py-6 text-right">
-                      <div className="flex items-center justify-end">
-                        {isExpanded ? <ChevronDown size={22} className="text-purple-600" /> : <ChevronRight size={22} className="text-slate-300 group-hover:text-purple-400 transition-colors" />}
-                      </div>
-                    </td>
+                <React.Fragment key={k}>
+                  <tr onClick={() => setExpanded(p => ({...p, [k]: !p[k]}))} className="cursor-pointer hover:bg-slate-50/50">
+                    <td className="px-8 py-6"><div className="w-8 h-8 rounded-xl border border-slate-200 shadow-sm" style={{ backgroundColor: g.colorCode }}></div></td>
+                    <td className="px-8 py-6"><p className="font-bold text-slate-900">{g.brand} {g.materialType}</p><p className="text-[10px] text-slate-400 uppercase mt-1">{g.colorName}</p></td>
+                    <td className="px-8 py-6"><p className="font-black text-slate-800 text-lg italic">{Math.round(rem)}g</p><p className="text-[9px] text-slate-400 uppercase">{g.rolls.length} rollen</p></td>
+                    <td className="px-8 py-6 text-right">{isEx ? <ChevronDown size={22} className="text-purple-600" /> : <ChevronRight size={22} className="text-slate-300" />}</td>
                   </tr>
-                  {isExpanded && group.rolls.map(roll => {
-                    const rem = roll.totalWeight - (roll.usedWeight || 0);
-                    return (
-                      <tr key={roll.id} className="bg-slate-50/30 border-l-[6px] border-purple-500">
-                        <td className="px-8 py-4">
-                          <div className="w-2 h-2 bg-purple-500 rounded-full mx-auto shadow-sm shadow-purple-200"></div>
-                        </td>
-                        <td className="px-8 py-4">
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Rol ID: #{roll.id.slice(-4)} • {roll.purchaseDate}</p>
-                          <p className="text-[9px] text-slate-400 font-bold italic">{roll.shopName || 'Locatie niet ingevuld'}</p>
-                        </td>
-                        <td className="px-8 py-4">
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Prijs: €{roll.price.toFixed(2)}</p>
-                        </td>
-                        <td className="px-8 py-4">
-                          <p className="text-sm font-black text-slate-700 italic">{Math.round(rem)}g / {roll.totalWeight}g</p>
-                        </td>
-                        <td className="px-8 py-4 text-right">
-                          <div className="flex items-center justify-end gap-3">
-                            <div className="flex bg-white rounded-xl border border-slate-200 p-1.5 px-3 items-center gap-2 shadow-sm focus-within:border-purple-300 transition-all">
-                               <Hash size={14} className="text-purple-500" />
-                               <input 
-                                 type="number" 
-                                 placeholder="Gram" 
-                                 className="w-12 text-xs font-black outline-none border-none p-0 text-slate-800 bg-transparent focus:ring-0 shadow-none ring-0" 
-                                 onKeyDown={(e) => {
-                                   if (e.key === 'Enter' && e.target.value) {
-                                     onUpdate('filaments', roll.id, { usedWeight: (roll.usedWeight || 0) + Number(e.target.value) });
-                                     e.target.value = '';
-                                   }
-                                 }}
-                               />
-                            </div>
-                            <button onClick={(e) => { e.stopPropagation(); onDelete('filaments', roll.id); }} className="text-slate-200 hover:text-rose-500 border-none bg-transparent outline-none ring-0 p-2"><Trash2 size={18}/></button>
-                            <button onClick={(e) => { e.stopPropagation(); onUpdate('filaments', roll.id, { status: showArchived ? 'actief' : 'leeg' }); }} className="text-slate-200 hover:text-purple-600 border-none bg-transparent outline-none ring-0 p-2">
-                              {showArchived ? <RefreshCw size={18}/> : <Archive size={18}/>}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {isEx && g.rolls.map(r => (
+                    <tr key={r.id} className="bg-slate-50/30 border-l-[6px] border-purple-500 text-xs">
+                      <td colSpan="2" className="px-12 py-4"><p className="font-black text-slate-500 uppercase">#{r.id.slice(-4)} • {r.purchaseDate}</p><p className="text-slate-400">{r.shopName}</p></td>
+                      <td className="px-8 py-4"><p className="font-black italic">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</p></td>
+                      <td className="px-8 py-4 text-right flex items-center justify-end gap-2">
+                        <div className="flex bg-white rounded-xl border border-slate-200 p-1 px-3 items-center shadow-sm focus-within:ring-2 focus-within:ring-purple-200">
+                          <Hash size={12} className="text-purple-500 mr-2" />
+                          <input type="number" placeholder="Invoer" className="w-10 text-[10px] font-bold outline-none border-none p-0 bg-transparent ring-0" onKeyDown={e => { if (e.key === 'Enter' && e.target.value) { onUpdate('filaments', r.id, { usedWeight: (r.usedWeight || 0) + Number(e.target.value) }); e.target.value = ''; } }} />
+                        </div>
+                        <button onClick={e => { e.stopPropagation(); onDelete('filaments', r.id); }} className="text-slate-200 hover:text-rose-500 p-2"><Trash2 size={16}/></button>
+                        <button onClick={e => { e.stopPropagation(); onUpdate('filaments', r.id, { status: archived ? 'actief' : 'leeg' }); }} className="text-slate-200 hover:text-purple-600 p-2">{archived ? <RefreshCw size={16}/> : <Archive size={16}/>}</button>
+                      </td>
+                    </tr>
+                  ))}
                 </React.Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
-
-      {showModal && (
-        <Modal title="Nieuwe Filament Rol" onClose={() => setShowModal(false)}>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Merk" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} required />
-              <Input label="Materiaal" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Kleur Naam" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required />
-              <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-3 mb-1 block">Kleur Kies</label>
-                <input type="color" className="w-full h-12 p-1.5 bg-slate-50 rounded-2xl outline-none border-none cursor-pointer shadow-inner" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Prijs p/s (€)" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required />
-              <Input label="Gram p/s" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Besteldatum" type="date" value={formData.purchaseDate} onChange={e => setFormData({...formData, purchaseDate: e.target.value})} required />
-              <Input label="Winkel" value={formData.shopName} onChange={e => setFormData({...formData, shopName: e.target.value})} />
-            </div>
-            <Input label="Aantal rollen (Bulk invoer)" type="number" min="1" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />
-            <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl shadow-purple-200 border-none outline-none ring-0 active:scale-95 transition-all" style={{ backgroundColor: '#9333ea' }}>Voorraad Toevoegen</button>
-          </form>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function ProductList({ products, filaments, settings, onAdd, onDelete }) {
-  const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({ name: '', weight: '', printTime: '', filamentIds: [], suggestedPrice: '' });
-
-  const groupedFilamentsForSelect = useMemo(() => {
-    const groups = {};
-    filaments.filter(f => f.status === 'actief').forEach(f => {
-      const key = `${f.brand}-${f.materialType}-${f.colorName}`;
-      if (!groups[key]) groups[key] = { ...f, rolls: [] };
-      groups[key].rolls.push(f);
-    });
-    return Object.values(groups);
-  }, [filaments]);
-
-  const toggleFilament = (id) => setFormData(prev => ({ ...prev, filamentIds: prev.filamentIds.includes(id) ? prev.filamentIds.filter(fid => fid !== id) : [...prev.filamentIds, id] }));
-
-  return (
-    <div className="space-y-10 animate-in fade-in duration-500">
-      <button 
-        onClick={() => setShowModal(true)} 
-        className="text-white px-10 py-4 rounded-2xl flex items-center gap-3 font-bold shadow-xl shadow-purple-100 border-none outline-none ring-0 transition-all uppercase text-sm italic active:scale-95"
-        style={{ backgroundColor: '#9333ea' }}
-      >
-        <Plus size={20} strokeWidth={3} /> Nieuw Product
-      </button>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {products.map(p => (
-          <div key={p.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative group hover:shadow-xl transition-all duration-300">
-            <h3 className="text-xl font-black mb-1 italic tracking-tight text-slate-800 uppercase">{p.name}</h3>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-8">{p.weight}g • {p.printTime}m printtijd</p>
-            
-            <div className="flex flex-wrap gap-2.5 mb-10">
-              {p.filamentIds?.map(fid => {
-                const f = filaments.find(fil => fil.id === fid);
-                return f ? (
-                  <div key={fid} className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 shadow-sm">
-                     <div className="w-3.5 h-3.5 rounded-full border border-white shadow-inner" style={{ backgroundColor: f.colorCode }}></div>
-                     <span className="text-[9px] font-black uppercase text-slate-500">{f.brand}</span>
-                  </div>
-                ) : null;
-              })}
-            </div>
-
-            <div className="flex items-end justify-between">
-               <div className="bg-purple-50 px-6 py-4 rounded-2xl shadow-sm border border-purple-100/50">
-                 <p className="text-[9px] font-black text-purple-400 uppercase leading-none mb-1 tracking-widest text-center">Prijs Advies</p>
-                 <p className="text-2xl font-black text-purple-600 tracking-tighter italic leading-none">€{(p.suggestedPrice || 0).toFixed(2)}</p>
-               </div>
-               <button onClick={() => onDelete('products', p.id)} className="text-slate-200 hover:text-rose-500 transition-colors border-none bg-transparent outline-none ring-0 p-2"><Trash2 size={22}/></button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {showModal && (
-        <Modal title="Product Catalogus" onClose={() => setShowModal(false)}>
-          <form onSubmit={(e) => { e.preventDefault(); onAdd('products', { ...formData, weight: Number(formData.weight), printTime: Number(formData.printTime), suggestedPrice: Number(formData.suggestedPrice) }); setShowModal(false); }} className="space-y-6">
-            <Input label="Naam van Product" placeholder="Bijv. Flexi Dino" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Gewicht (g)" type="number" placeholder="0" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} required />
-              <Input label="Print Tijd (min)" type="number" placeholder="0" value={formData.printTime} onChange={e => setFormData({...formData, printTime: e.target.value})} required />
-            </div>
-            <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase text-slate-400 ml-3 mb-1 block">Beschikbare Filamenten</label>
-              <div className="max-h-52 overflow-y-auto p-5 bg-slate-50 rounded-[2rem] space-y-4 shadow-inner">
-                {groupedFilamentsForSelect.map(group => (
-                  <div key={`${group.brand}-${group.colorName}`} className="space-y-2">
-                    <p className="text-[9px] font-black uppercase text-slate-400 ml-1 tracking-widest opacity-60">{group.brand} {group.colorName}</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      {group.rolls.map(roll => (
-                        <button key={roll.id} type="button" onClick={() => toggleFilament(roll.id)} className={`p-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-3 border-none outline-none transition-all shadow-sm active:scale-95 ${formData.filamentIds.includes(roll.id) ? 'text-white shadow-purple-200' : 'bg-white text-slate-500'}`} style={{ backgroundColor: formData.filamentIds.includes(roll.id) ? '#9333ea' : undefined }}>
-                          <div className="w-3.5 h-3.5 rounded-full shadow-inner border border-white" style={{ backgroundColor: roll.colorCode }}></div>
-                          <span className="truncate leading-none">#{roll.id.slice(-4)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <Input label="Gewenste Verkoopprijs (€)" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} required />
-            <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl shadow-purple-200 border-none outline-none active:scale-95 transition-all" style={{ backgroundColor: '#9333ea' }}>In Catalogus Plaatsen</button>
-          </form>
-        </Modal>
-      )}
+      {showModal && <Modal title="Rol Toevoegen" onClose={() => setShowModal(false)}>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-2 gap-4"><Input label="Merk" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} required /><Input label="Materiaal" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required /></div>
+          <div className="grid grid-cols-2 gap-4"><Input label="Kleur" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[10px] font-black uppercase text-slate-400 ml-3 mb-1 block">Kleur Kies</label><input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
+          <div className="grid grid-cols-2 gap-4"><Input label="Prijs (€)" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required /><Input label="Gewicht (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required /></div>
+          <Input label="Aantal" type="number" min="1" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />
+          <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl border-none outline-none" style={{ backgroundColor: '#9333ea' }}>Opslaan</button>
+        </form>
+      </Modal>}
     </div>
   );
 }
@@ -718,19 +627,11 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
 function SettingsPanel({ settings, onSave }) {
   const [temp, setTemp] = useState(settings);
   return (
-    <div className="max-w-md bg-white p-12 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-12 animate-in slide-in-from-right-4 duration-500">
-      <h2 className="text-2xl font-black flex items-center gap-3 italic uppercase tracking-tighter text-purple-600"><Zap size={28} /> Energie Tarieven</h2>
-      <div className="space-y-8">
-        <Input label="Stroomprijs per kWh (€)" type="number" step="0.01" value={temp.kwhPrice} onChange={e => setTemp({...temp, kwhPrice: Number(e.target.value)})} />
-        <Input label="Printer Verbruik (Watt)" type="number" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
-        <button 
-          onClick={() => onSave(temp)} 
-          className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl shadow-purple-200 border-none outline-none ring-0 active:scale-95 transition-all"
-          style={{ backgroundColor: '#9333ea' }}
-        >
-          Instellingen Opslaan
-        </button>
-      </div>
+    <div className="max-w-md bg-white p-12 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8 animate-in slide-in-from-right-4">
+      <h2 className="text-2xl font-black italic uppercase text-purple-600">Tarieven</h2>
+      <Input label="kWh Prijs (€)" type="number" step="0.01" value={temp.kwhPrice} onChange={e => setTemp({...temp, kwhPrice: Number(e.target.value)})} />
+      <Input label="Printer Wattage" type="number" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
+      <button onClick={() => onSave(temp)} className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl border-none outline-none" style={{ backgroundColor: '#9333ea' }}>Opslaan</button>
     </div>
   );
 }
@@ -738,8 +639,8 @@ function SettingsPanel({ settings, onSave }) {
 function Input({ label, ...props }) {
   return (
     <div className="space-y-1 flex-1">
-      <label className="text-[10px] font-black uppercase text-slate-400 ml-3 mb-1 block tracking-[0.1em]">{label}</label>
-      <input {...props} className="w-full p-5 bg-slate-50 rounded-[1.5rem] outline-none border-none font-black text-slate-700 shadow-inner focus:bg-slate-100 transition-colors shadow-none ring-0" />
+      <label className="text-[10px] font-black uppercase text-slate-400 ml-3 mb-1 block tracking-wider">{label}</label>
+      <input {...props} className="w-full p-5 bg-slate-50 rounded-[1.5rem] border-none font-black text-slate-700 shadow-inner focus:bg-slate-100 ring-0 outline-none transition-all shadow-none" />
     </div>
   );
 }
@@ -748,12 +649,7 @@ function Modal({ title, children, onClose }) {
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-6 z-50">
       <div className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh] border border-white">
-        <div className="flex justify-between items-center mb-10">
-          <h2 className="text-3xl font-black italic uppercase tracking-tighter text-slate-900">{title}</h2>
-          <button onClick={onClose} className="text-slate-300 hover:text-slate-500 transition-colors border-none bg-transparent outline-none ring-0 focus:ring-0">
-             <Plus size={32} className="rotate-45" />
-          </button>
-        </div>
+        <div className="flex justify-between items-center mb-10"><h2 className="text-3xl font-black italic uppercase text-slate-900">{title}</h2><button onClick={onClose} className="text-slate-300 hover:text-slate-500 border-none bg-transparent outline-none"><Plus size={32} className="rotate-45" /></button></div>
         {children}
       </div>
     </div>
