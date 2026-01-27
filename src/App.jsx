@@ -50,7 +50,8 @@ import {
   Activity,
   Box,
   PlayCircle,
-  Scale
+  Scale,
+  Calculator
 } from 'lucide-react';
 
 // Firebase Configuratie
@@ -88,21 +89,16 @@ const ORDER_STATUSES = ['In de wacht', 'Printen', 'Gereed', 'Afgerond'];
 const parseMetadataFromText = (text) => {
   const result = { time: 0, weight: 0, multiMaterial: [] };
   
-  // Zoek naar printtijd (Bambu/Prusa/Orca)
-  // Formaat: ; estimated printing time (normal mode) = 1h 20m 30s
   const timeMatch = text.match(/estimated printing time.*=\s*(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?/i);
   if (timeMatch) {
     const hours = parseInt(timeMatch[1] || 0);
     const mins = parseInt(timeMatch[2] || 0);
     result.time = (hours * 60) + mins;
   } else {
-    // Cura formaat: ;TIME:3600
     const curaTimeMatch = text.match(/;TIME:(\d+)/i);
     if (curaTimeMatch) result.time = Math.round(parseInt(curaTimeMatch[1]) / 60);
   }
 
-  // Zoek naar gewicht (Bambu/Prusa/Orca)
-  // Formaat: ; filament used [g] = 15.5
   const weightMatches = [...text.matchAll(/filament used \[g\]\s*=\s*([\d.]+)/gi)];
   if (weightMatches.length > 0) {
     if (weightMatches.length > 1) {
@@ -112,11 +108,22 @@ const parseMetadataFromText = (text) => {
       result.weight = parseFloat(weightMatches[0][1]);
     }
   } else {
-    // Cura schatting op basis van lengte
     const curaFilamentMatch = text.match(/;Filament used:\s*([\d.]+)/i);
     if (curaFilamentMatch) result.weight = Math.round(parseFloat(curaFilamentMatch[1]) * 2.98);
   }
   return result;
+};
+
+// Bereken actuele filamentprijs per gram voor een type
+const getFilamentGramPrice = (filaments, key) => {
+  // Zoek de meest recent toegevoegde actieve rol van dit type
+  const activeRolls = filaments.filter(f => f.status === 'actief' && `${f.brand}-${f.materialType}-${f.colorName}` === key);
+  const targetRoll = activeRolls.length > 0 ? activeRolls[0] : filaments.find(f => `${f.brand}-${f.materialType}-${f.colorName}` === key);
+  
+  if (targetRoll && targetRoll.price && targetRoll.totalWeight) {
+    return targetRoll.price / targetRoll.totalWeight;
+  }
+  return 0;
 };
 
 export default function App() {
@@ -129,7 +136,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // Laad JSZip voor 3MF ondersteuning
   useEffect(() => {
     if (!window.JSZip) {
       const script = document.createElement('script');
@@ -316,7 +322,7 @@ export default function App() {
 
         {activeTab === TABS.DASHBOARD && <Dashboard orders={orders} products={products} filaments={filaments} settings={settings} />}
         {activeTab === TABS.ORDERS && <OrderList orders={orders} products={products} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
-        {activeTab === TABS.CATALOG && <ProductList products={products} filaments={filaments} onAdd={addItem} onDelete={deleteItem} />}
+        {activeTab === TABS.CATALOG && <ProductList products={products} filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} settings={settings} />}
         {activeTab === TABS.STOCK && <StockTable filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
         {activeTab === TABS.SETTINGS && <SettingsPanel settings={settings} onSave={saveSettings} />}
       </main>
@@ -337,14 +343,8 @@ function Dashboard({ orders, products, filaments, settings }) {
       if (prod) {
         let materialCostForOne = 0;
         (prod.filaments || []).forEach(assignment => {
-          const representativeRoll = filaments.find(f => 
-            f.status === 'actief' && 
-            `${f.brand}-${f.materialType}-${f.colorName}` === assignment.key
-          ) || filaments.find(f => `${f.brand}-${f.materialType}-${f.colorName}` === assignment.key);
-
-          if (representativeRoll) {
-            materialCostForOne += (assignment.weight / (representativeRoll.totalWeight || 1000)) * representativeRoll.price;
-          }
+          const gramPrice = getFilamentGramPrice(filaments, assignment.key);
+          materialCostForOne += assignment.weight * gramPrice;
         });
         const energyCost = (prod.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice;
         totalCost += (materialCostForOne + energyCost) * qty;
@@ -505,9 +505,16 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
   );
 }
 
-function ProductList({ products, filaments, onAdd, onDelete }) {
+function ProductList({ products, filaments, onAdd, onUpdate, onDelete, settings }) {
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({ name: '', weight: '', printTime: '', filaments: [], suggestedPrice: '' });
+  const [editingId, setEditingId] = useState(null);
+  const [formData, setFormData] = useState({ 
+    name: '', 
+    filaments: [], 
+    suggestedPrice: '',
+    timeH: 0,
+    timeM: 0
+  });
   const [parsing, setParsing] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -520,6 +527,21 @@ function ProductList({ products, filaments, onAdd, onDelete }) {
     return Object.values(types);
   }, [filaments]);
 
+  const totalWeight = useMemo(() => {
+    return (formData.filaments || []).reduce((sum, f) => sum + (Number(f.weight) || 0), 0);
+  }, [formData.filaments]);
+
+  // Bereken geschatte kostprijs voor de modal
+  const estimatedCost = useMemo(() => {
+    const materialCost = (formData.filaments || []).reduce((sum, f) => {
+      const gramPrice = getFilamentGramPrice(filaments, f.key);
+      return sum + (f.weight * gramPrice);
+    }, 0);
+    const totalMins = (Number(formData.timeH) * 60) + Number(formData.timeM);
+    const energyCost = (totalMins / 60) * (settings.printerWattage / 1000) * settings.kwhPrice;
+    return materialCost + energyCost;
+  }, [formData.filaments, formData.timeH, formData.timeM, filaments, settings]);
+
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -527,85 +549,147 @@ function ProductList({ products, filaments, onAdd, onDelete }) {
     
     try {
       const is3MF = file.name.toLowerCase().endsWith('.3mf');
+      let content = "";
       
       if (is3MF) {
-        if (!window.JSZip) {
-          throw new Error("ZIP bibliotheek nog niet geladen. Probeer het over een moment opnieuw.");
-        }
-        
+        if (!window.JSZip) throw new Error("ZIP bibliotheek niet geladen.");
         const zip = await window.JSZip.loadAsync(file);
-        // In Bambu Studio zit de metadata vaak in Metadata/slice_info.config of in een .gcode bestand in het archief
         const gcodeFile = Object.keys(zip.files).find(name => name.endsWith('.gcode'));
-        
-        if (gcodeFile) {
-          const content = await zip.files[gcodeFile].async("string");
-          const meta = parseMetadataFromText(content);
-          setFormData(prev => ({ ...prev, weight: meta.weight || prev.weight, printTime: meta.time || prev.printTime }));
-        } else {
-          // Probeer te kijken naar de Bambu Config (XML-achtig)
-          const configFile = Object.keys(zip.files).find(name => name.includes('slice_info.config') || name.includes('model_settings.config'));
-          if (configFile) {
-            const content = await zip.files[configFile].async("string");
-            const meta = parseMetadataFromText(content);
-            setFormData(prev => ({ ...prev, weight: meta.weight || prev.weight, printTime: meta.time || prev.printTime }));
-          }
-        }
+        if (gcodeFile) content = await zip.files[gcodeFile].async("string");
       } else {
-        // Reguliere G-code
         const reader = new FileReader();
-        reader.onload = (ev) => {
-          const meta = parseMetadataFromText(ev.target.result);
-          setFormData(prev => ({ ...prev, weight: meta.weight || prev.weight, printTime: meta.time || prev.printTime }));
-        };
-        reader.readAsText(file);
+        content = await new Promise((resolve) => {
+          reader.onload = (ev) => resolve(ev.target.result);
+          reader.readAsText(file);
+        });
+      }
+
+      if (content) {
+        const meta = parseMetadataFromText(content);
+        setFormData(prev => ({ 
+          ...prev, 
+          timeH: Math.floor(meta.time / 60), 
+          timeM: meta.time % 60 
+        }));
       }
     } catch (err) {
-      console.error("Fout bij inlezen:", err);
+      console.error(err);
     } finally {
       setParsing(false);
     }
   };
 
+  const openEdit = (p) => {
+    setEditingId(p.id);
+    setFormData({
+      name: p.name,
+      filaments: p.filaments || [],
+      suggestedPrice: p.suggestedPrice || '',
+      timeH: Math.floor((p.printTime || 0) / 60),
+      timeM: (p.printTime || 0) % 60
+    });
+    setShowModal(true);
+  };
+
+  const handleSave = (e) => {
+    e.preventDefault();
+    const finalData = {
+      name: formData.name,
+      filaments: formData.filaments,
+      weight: totalWeight,
+      printTime: (Number(formData.timeH) * 60) + Number(formData.timeM),
+      suggestedPrice: Number(formData.suggestedPrice)
+    };
+
+    if (editingId) {
+      onUpdate('products', editingId, finalData);
+    } else {
+      onAdd('products', finalData);
+    }
+    setShowModal(false);
+    setEditingId(null);
+  };
+
   return (
     <div className="space-y-10 animate-in fade-in duration-500">
-      <button onClick={() => setShowModal(true)} className="text-white px-10 py-4 rounded-2xl flex items-center gap-3 font-bold shadow-xl border-none active:scale-95 transition-all uppercase text-sm italic" style={{ backgroundColor: '#9333ea' }}>
+      <button onClick={() => { setEditingId(null); setFormData({name:'', filaments:[], suggestedPrice:'', timeH:0, timeM:0}); setShowModal(true); }} className="text-white px-10 py-4 rounded-2xl flex items-center gap-3 font-bold shadow-xl border-none outline-none active:scale-95 transition-all uppercase text-sm italic" style={{ backgroundColor: '#9333ea' }}>
         <Plus size={20} strokeWidth={3} /> Nieuw Product
       </button>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {products.map(p => (
-          <div key={p.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative group hover:shadow-xl transition-all">
-            <h3 className="text-xl font-black italic uppercase text-slate-800 tracking-tight">{p.name}</h3>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6">{p.weight}g • {p.printTime}m</p>
-            <div className="space-y-2 mb-8">
-              {(p.filaments || []).map(assign => {
-                const parts = assign.key.split('-');
-                return (
+        {products.map(p => {
+          const hours = Math.floor((p.printTime || 0) / 60);
+          const mins = (p.printTime || 0) % 60;
+          
+          // Bereken live kostprijs voor de kaart
+          const matCost = (p.filaments || []).reduce((sum, f) => sum + (f.weight * getFilamentGramPrice(filaments, f.key)), 0);
+          const energyCost = ((p.printTime || 0) / 60) * (settings.printerWattage / 1000) * settings.kwhPrice;
+          const liveCost = matCost + energyCost;
+
+          return (
+            <div key={p.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative group hover:shadow-xl transition-all">
+              <div className="flex justify-between items-start mb-1">
+                <h3 className="text-xl font-black italic uppercase text-slate-800 tracking-tight">{p.name}</h3>
+                <button onClick={() => openEdit(p)} className="p-2 text-slate-300 hover:text-purple-600 transition-colors border-none bg-transparent outline-none ring-0"><Edit3 size={18}/></button>
+              </div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6">
+                {p.weight}g • {hours}u {mins}m
+              </p>
+              
+              <div className="space-y-2 mb-8">
+                {(p.filaments || []).map(assign => (
                   <div key={assign.key} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl">
-                    <span className="text-[9px] font-black text-slate-500 uppercase">{parts[0]} {parts[2]}</span>
+                    <span className="text-[9px] font-black text-slate-500 uppercase">{assign.key.split('-')[0]} {assign.key.split('-')[2]}</span>
                     <span className="text-[9px] font-black text-purple-600 uppercase">{assign.weight}g</span>
                   </div>
-                );
-              })}
+                ))}
+              </div>
+
+              <div className="flex items-end justify-between">
+                <div className="flex gap-2">
+                  <div className="bg-purple-50 px-4 py-3 rounded-2xl border border-purple-100/50">
+                    <p className="text-[8px] font-black text-purple-400 uppercase text-center mb-1">Prijs</p>
+                    <p className="text-xl font-black text-purple-600 italic">€{(p.suggestedPrice || 0).toFixed(2)}</p>
+                  </div>
+                  <div className="bg-slate-50 px-4 py-3 rounded-2xl border border-slate-100" title="Actuele geschatte kostprijs">
+                    <p className="text-[8px] font-black text-slate-400 uppercase text-center mb-1">Kost</p>
+                    <p className="text-xl font-black text-slate-600 italic">€{liveCost.toFixed(2)}</p>
+                  </div>
+                </div>
+                <button onClick={() => onDelete('products', p.id)} className="text-slate-200 hover:text-rose-500 border-none bg-transparent outline-none ring-0 p-2"><Trash2 size={20}/></button>
+              </div>
             </div>
-            <div className="flex items-end justify-between">
-              <div className="bg-purple-50 px-6 py-4 rounded-2xl border border-purple-100/50"><p className="text-[9px] font-black text-purple-400 uppercase text-center tracking-widest mb-1">Adviesprijs</p><p className="text-2xl font-black text-purple-600 italic">€{(p.suggestedPrice || 0).toFixed(2)}</p></div>
-              <button onClick={() => onDelete('products', p.id)} className="text-slate-200 hover:text-rose-500 border-none bg-transparent outline-none ring-0 p-2"><Trash2 size={22}/></button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-      {showModal && <Modal title="Product Toevoegen" onClose={() => setShowModal(false)}>
+
+      {showModal && <Modal title={editingId ? "Product Bewerken" : "Product Toevoegen"} onClose={() => setShowModal(false)}>
         <div className="mb-8 p-6 bg-purple-50 rounded-3xl border border-dashed border-purple-300 text-center">
           <input type="file" accept=".gcode,.3mf" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
           <button type="button" onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center gap-2 w-full text-purple-600 hover:text-purple-800 transition-colors">
             {parsing ? <RefreshCw className="animate-spin" /> : <Upload size={32} />}
-            <p className="text-[10px] font-black uppercase tracking-widest">{parsing ? "Parsing..." : "Lees G-code of .3mf bestand in"}</p>
+            <p className="text-[10px] font-black uppercase tracking-widest">{parsing ? "Laden..." : "Importeer G-code of .3mf"}</p>
           </button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); onAdd('products', { ...formData, weight: Number(formData.weight), printTime: Number(formData.printTime), suggestedPrice: Number(formData.suggestedPrice) }); setShowModal(false); }} className="space-y-6">
+        <form onSubmit={handleSave} className="space-y-6">
           <Input label="Naam Product" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
-          <div className="grid grid-cols-2 gap-4"><Input label="Totaal Gewicht (g)" type="number" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} required /><Input label="Print Tijd (min)" type="number" value={formData.printTime} onChange={e => setFormData({...formData, printTime: e.target.value})} required /></div>
-          <div className="space-y-3"><label className="text-[10px] font-black uppercase text-slate-400 ml-3">Filament Samenstelling</label>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-3 mb-1 block">Print Tijd (Uren)</label>
+              <input type="number" className="w-full p-5 bg-slate-50 rounded-[1.5rem] border-none font-black text-slate-700 shadow-inner outline-none" value={formData.timeH} onChange={e => setFormData({...formData, timeH: e.target.value})} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-3 mb-1 block">Minuten</label>
+              <input type="number" max="59" className="w-full p-5 bg-slate-50 rounded-[1.5rem] border-none font-black text-slate-700 shadow-inner outline-none" value={formData.timeM} onChange={e => setFormData({...formData, timeM: e.target.value})} />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex justify-between items-center px-3">
+              <label className="text-[10px] font-black uppercase text-slate-400">Samenstelling</label>
+              <span className="text-[10px] font-black text-purple-600 uppercase">Totaal: {totalWeight}g</span>
+            </div>
             <div className="max-h-60 overflow-y-auto p-4 bg-slate-50 rounded-[2rem] space-y-3 shadow-inner">
               {uniqueFilamentTypes.map(type => {
                 const assign = formData.filaments.find(f => f.key === type.key);
@@ -615,14 +699,31 @@ function ProductList({ products, filaments, onAdd, onDelete }) {
                       <div className="flex items-center gap-3"><div className="w-3.5 h-3.5 rounded-full border border-white" style={{ backgroundColor: type.colorCode }}></div><span>{type.brand} {type.colorName}</span></div>
                       {assign && <CheckCircle2 size={16} />}
                     </button>
-                    {assign && <div className="px-4 pb-2"><div className="flex bg-white rounded-xl border border-purple-200 p-2 items-center gap-2"><span className="text-[9px] font-black text-slate-400 uppercase ml-2">Gram:</span><input type="number" className="w-full text-xs font-black outline-none border-none p-0 bg-transparent" value={assign.weight} onChange={(e) => setFormData(p => ({ ...p, filaments: p.filaments.map(f => f.key === type.key ? { ...f, weight: Number(e.target.value) } : f) }))} /></div></div>}
+                    {assign && (
+                      <div className="px-4 pb-2">
+                        <div className="flex bg-white rounded-xl border border-purple-200 p-2 items-center gap-2">
+                          <span className="text-[9px] font-black text-slate-400 uppercase ml-2">Gram:</span>
+                          <input type="number" className="w-full text-xs font-black outline-none border-none p-0 bg-transparent" value={assign.weight} onChange={(e) => setFormData(p => ({ ...p, filaments: p.filaments.map(f => f.key === type.key ? { ...f, weight: Number(e.target.value) } : f) }))} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
-          <Input label="Verkoopprijs (€)" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} required />
-          <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl border-none outline-none active:scale-95 transition-all" style={{ backgroundColor: '#9333ea' }}>Product Opslaan</button>
+
+          <div className="flex items-center gap-4 bg-purple-50 p-6 rounded-[2rem] border border-purple-100">
+            <div className="flex-1"><Input label="Verkoopprijs (€)" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} required /></div>
+            <div className="text-right">
+              <p className="text-[8px] font-black text-purple-400 uppercase tracking-widest mb-1">Geschatte Kost</p>
+              <p className="text-2xl font-black text-purple-600 italic">€{estimatedCost.toFixed(2)}</p>
+            </div>
+          </div>
+
+          <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl border-none outline-none active:scale-95 transition-all" style={{ backgroundColor: '#9333ea' }}>
+            {editingId ? "Product Bijwerken" : "Product Opslaan"}
+          </button>
         </form>
       </Modal>}
     </div>
@@ -655,12 +756,10 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
   };
 
   const manualAdjustUsed = (roll, val) => {
-    // berekent de nieuwe 'usedWeight' op basis van een absolute mutatie of overschrijving
     onUpdate('filaments', roll.id, { usedWeight: (roll.usedWeight || 0) + Number(val) });
   };
 
   const setAbsoluteWeight = (roll, val) => {
-    // Stelt het resterende gewicht direct in door usedWeight te herberekenen
     const newUsed = roll.totalWeight - Number(val);
     onUpdate('filaments', roll.id, { usedWeight: Math.max(0, newUsed) });
   };
