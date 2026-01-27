@@ -174,7 +174,8 @@ export default function App() {
             <button 
               key={tab} 
               onClick={() => setActiveTab(tab)} 
-              className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none ring-0 appearance-none select-none ${activeTab === tab ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600'}`}
+              style={{ backgroundColor: activeTab === tab ? '#9333ea' : 'transparent' }}
+              className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none focus:outline-none focus:ring-0 appearance-none select-none ${activeTab === tab ? 'text-white shadow-lg' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600'}`}
             >
               <span className="text-sm font-bold uppercase tracking-tight">{tab}</span>
             </button>
@@ -320,7 +321,11 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
 
   return (
     <div className="space-y-10">
-      <button onClick={() => { setEditingId(null); setFormData({ customer: '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }] }); setShowModal(true); }} className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-xl hover:scale-105 transition-all border-none cursor-pointer">
+      <button 
+        onClick={() => { setEditingId(null); setFormData({ customer: '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }] }); setShowModal(true); }} 
+        style={{ backgroundColor: '#9333ea' }}
+        className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-xl hover:scale-105 transition-all border-none focus:outline-none cursor-pointer"
+      >
         <Plus size={18} className="inline mr-2" strokeWidth={3} /> Bestelling Invoeren
       </button>
 
@@ -344,12 +349,12 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
           </div>
           <Input label="Chat Link" value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
           <div className="space-y-3">
-             <div className="flex justify-between items-center px-2"><label className="text-[9px] font-black uppercase text-slate-400">Items</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase border-none bg-transparent cursor-pointer">+ Item</button></div>
+             <div className="flex justify-between items-center px-2"><label className="text-[9px] font-black uppercase text-slate-400">Items</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase border-none bg-transparent cursor-pointer font-black">+ Item</button></div>
              <div className="space-y-3 bg-slate-50 p-4 rounded-2xl max-h-80 overflow-y-auto shadow-inner">
                {formData.items.map((it, idx) => (
                  <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 relative shadow-sm space-y-3">
                    {formData.items.length > 1 && <button type="button" onClick={() => setFormData({...formData, items: formData.items.filter((_, i) => i !== idx)})} className="absolute top-1 right-1 text-slate-200 hover:text-rose-500 border-none bg-transparent"><Minus size={14}/></button>}
-                   <select required className="w-full p-2 bg-slate-50 rounded-lg text-xs font-bold border-none" value={it.productId} onChange={e => {
+                   <select required className="w-full p-2 bg-slate-50 rounded-lg text-xs font-bold border-none appearance-none outline-none" value={it.productId} onChange={e => {
                      const newItems = [...formData.items]; 
                      newItems[idx].productId = e.target.value;
                      const p = products.find(prod => prod.id === e.target.value);
@@ -360,17 +365,17 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
                      {products.filter(p => p.status !== 'gearchiveerd').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                    </select>
                    <div className="grid grid-cols-2 gap-2">
-                     <input type="number" className="p-2 bg-slate-50 rounded-lg text-xs font-black border-none" value={it.quantity} onChange={e => {const ni = [...formData.items]; ni[idx].quantity = e.target.value; setFormData({...formData, items: ni});}} placeholder="Aantal" />
-                     <input type="number" step="0.01" className="p-2 bg-slate-50 rounded-lg text-xs font-black border-none" value={it.price} onChange={e => {const ni = [...formData.items]; ni[idx].price = e.target.value; setFormData({...formData, items: ni});}} placeholder="Prijs" />
+                     <input type="number" className="p-2 bg-slate-50 rounded-lg text-xs font-black border-none outline-none" value={it.quantity} onChange={e => {const ni = [...formData.items]; ni[idx].quantity = e.target.value; setFormData({...formData, items: ni});}} placeholder="Aantal" />
+                     <input type="number" step="0.01" className="p-2 bg-slate-50 rounded-lg text-xs font-black border-none outline-none" value={it.price} onChange={e => {const ni = [...formData.items]; ni[idx].price = e.target.value; setFormData({...formData, items: ni});}} placeholder="Prijs" />
                    </div>
-                   <select className="w-full p-2 bg-slate-50 rounded-lg text-[9px] font-black uppercase border-none text-purple-600" value={it.status} onChange={e => {const ni = [...formData.items]; ni[idx].status = e.target.value; setFormData({...formData, items: ni});}}>
+                   <select className="w-full p-2 bg-slate-50 rounded-lg text-[9px] font-black uppercase border-none text-purple-600 appearance-none outline-none" value={it.status} onChange={e => {const ni = [...formData.items]; ni[idx].status = e.target.value; setFormData({...formData, items: ni});}}>
                      {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                    </select>
                  </div>
                ))}
              </div>
           </div>
-          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">Opslaan</button>
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -434,7 +439,13 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <button onClick={() => { setEditingId(null); setFormData({name:'', filaments:[], suggestedPrice:'', timeH:0, timeM:0}); setShowModal(true); }} className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none cursor-pointer transition-all hover:bg-purple-700"><Plus size={18} className="inline mr-2" strokeWidth={3} /> Nieuw Product</button>
+        <button 
+          onClick={() => { setEditingId(null); setFormData({name:'', filaments:[], suggestedPrice:'', timeH:0, timeM:0}); setShowModal(true); }} 
+          style={{ backgroundColor: '#9333ea' }}
+          className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none cursor-pointer transition-all hover:bg-purple-700"
+        >
+          <Plus size={18} className="inline mr-2" strokeWidth={3} /> Nieuw Product
+        </button>
         <button onClick={() => setArchived(!archived)} className="text-[10px] font-black uppercase text-slate-400 border-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors">
           <Archive size={14} className="inline mr-1" /> {archived ? 'Toon Actief' : 'Toon Archief'}
         </button>
@@ -513,7 +524,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
       {showModal && <Modal title={editingId ? "Product Bewerken" : "Nieuw Product"} onClose={() => setShowModal(false)}>
         <div className="mb-6 p-6 bg-purple-50 rounded-3xl border border-dashed border-purple-200 text-center">
           <input type="file" accept=".gcode,.3mf" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
-          <button type="button" onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center gap-2 w-full text-purple-600 border-none bg-transparent cursor-pointer">
+          <button type="button" onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center gap-2 w-full text-purple-600 border-none bg-transparent cursor-pointer font-black">
             {parsing ? <RefreshCw className="animate-spin" /> : <Upload size={24} />}
             <p className="text-[9px] font-black uppercase tracking-widest">{parsing ? "Laden..." : "Importeer G-code / 3MF"}</p>
           </button>
@@ -536,8 +547,13 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                 const assign = formData.filaments.find(f => f.key === type.key);
                 return (
                   <div key={type.key} className="flex items-center gap-2">
-                    <button type="button" onClick={() => setFormData({...formData, filaments: assign ? formData.filaments.filter(f => f.key !== type.key) : [...formData.filaments, {key: type.key, weight: 0}]})} className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none cursor-pointer transition-all ${assign ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-slate-400'}`}>
-                      <div className="w-2.5 h-2.5 rounded-full border border-white" style={{backgroundColor: type.color}}></div> {type.brand} {type.colorName}
+                    <button 
+                      type="button" 
+                      onClick={() => setFormData({...formData, filaments: assign ? formData.filaments.filter(f => f.key !== type.key) : [...formData.filaments, {key: type.key, weight: 0}]})} 
+                      style={{ backgroundColor: assign ? '#9333ea' : '#fff' }}
+                      className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none cursor-pointer transition-all ${assign ? 'text-white shadow-md' : 'text-slate-400'}`}
+                    >
+                      <div className="w-2.5 h-2.5 rounded-full border border-white shadow-sm" style={{backgroundColor: type.color}}></div> {type.brand} {type.colorName}
                     </button>
                     {assign && <input type="number" className="w-16 p-2 bg-white rounded-lg text-[10px] font-black border-none outline-none shadow-sm" placeholder="G" value={assign.weight} onChange={e => setFormData({...formData, filaments: formData.filaments.map(f => f.key === type.key ? {...f, weight: Number(e.target.value)} : f)})} />}
                   </div>
@@ -546,7 +562,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
             </div>
           </div>
           <Input label="Verkoopprijs (€)" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} required />
-          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">Opslaan</button>
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -572,7 +588,13 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <button onClick={() => setShowModal(true)} className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none cursor-pointer transition-all hover:bg-purple-700">+ Rol Toevoegen</button>
+        <button 
+          onClick={() => setShowModal(true)} 
+          style={{ backgroundColor: '#9333ea' }}
+          className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none cursor-pointer transition-all hover:bg-purple-700"
+        >
+          + Rol Toevoegen
+        </button>
         <button onClick={() => setArchived(!archived)} className="text-[10px] font-black uppercase text-slate-400 border-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors">
           {archived ? 'Toon Actief' : 'Toon Leeg'}
         </button>
@@ -598,7 +620,7 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                   {isEx && g.rolls.map(r => (
                     <tr key={r.id} className="bg-slate-50/30 border-l-4 border-purple-500">
                       <td colSpan="2" className="px-10 py-4">
-                        <p className="text-[9px] font-black uppercase text-slate-400">Rol #{r.id.slice(-4)} ({r.status})</p>
+                        <p className="text-[9px] font-black uppercase text-slate-400 font-black">Rol #{r.id.slice(-4)} ({r.status})</p>
                         <p className="text-xs text-slate-500 font-bold italic">Sinds: {r.purchaseDate}</p>
                       </td>
                       <td className="px-8 py-4 font-black text-slate-600">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
@@ -626,10 +648,10 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
           setShowModal(false);
         }} className="space-y-6">
           <div className="grid grid-cols-2 gap-4"><Input label="Merk" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} required /><Input label="Type" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required /></div>
-          <div className="grid grid-cols-2 gap-4"><Input label="Kleur" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-2">Visueel</label><input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer shadow-inner" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
+          <div className="grid grid-cols-2 gap-4"><Input label="Kleur" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest font-black">Visueel</label><input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer shadow-inner appearance-none outline-none" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
           <div className="grid grid-cols-2 gap-4"><Input label="Prijs" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required /><Input label="Totaal (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required /></div>
           <Input label="Aantal rollen" type="number" min="1" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />
-          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">In Voorraad Plaatsen</button>
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">In Voorraad Plaatsen</button>
         </form>
       </Modal>}
     </div>
@@ -643,7 +665,7 @@ function SettingsPanel({ settings, onSave }) {
       <h2 className="text-2xl font-black italic uppercase text-purple-600 tracking-tighter">Configuratie</h2>
       <Input label="Prijs p/kWh (€)" type="number" step="0.01" value={temp.kwhPrice} onChange={e => setTemp({...temp, kwhPrice: Number(e.target.value)})} />
       <Input label="Printer Verbruik (W)" type="number" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
-      <button onClick={() => onSave(temp)} className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-xl transition-all border-none cursor-pointer italic hover:bg-purple-700">Instellingen Opslaan</button>
+      <button onClick={() => onSave(temp)} style={{ backgroundColor: '#9333ea' }} className="w-full py-5 text-white rounded-2xl font-black uppercase shadow-xl transition-all border-none cursor-pointer italic hover:bg-purple-700">Instellingen Opslaan</button>
     </div>
   );
 }
@@ -651,8 +673,8 @@ function SettingsPanel({ settings, onSave }) {
 function Input({ label, ...props }) {
   return (
     <div className="space-y-1 flex-1">
-      <label className="text-[9px] font-black uppercase text-slate-400 ml-3 block tracking-wider">{label}</label>
-      <input {...props} className="w-full p-5 bg-slate-50 rounded-[1.5rem] border-none font-bold text-slate-700 shadow-inner outline-none focus:bg-slate-100 transition-all" />
+      <label className="text-[9px] font-black uppercase text-slate-400 ml-3 block tracking-wider font-black tracking-widest">{label}</label>
+      <input {...props} className="w-full p-5 bg-slate-50 rounded-[1.5rem] border-none font-bold text-slate-700 shadow-inner outline-none focus:bg-slate-100 transition-all appearance-none" />
     </div>
   );
 }
