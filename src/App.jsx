@@ -46,7 +46,8 @@ import {
   ListChecks,
   PlayCircle,
   Box,
-  MessageSquare
+  MessageSquare,
+  Check
 } from 'lucide-react';
 
 // Firebase Configuratie
@@ -176,7 +177,7 @@ export default function App() {
               key={tab} 
               onClick={() => setActiveTab(tab)} 
               style={{ backgroundColor: activeTab === tab ? '#9333ea' : 'transparent' }}
-              className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none focus:outline-none focus:ring-0 appearance-none select-none ${activeTab === tab ? 'text-white shadow-lg shadow-purple-200' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600'}`}
+              className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none focus:outline-none focus:ring-0 appearance-none select-none ${activeTab === tab ? 'text-white shadow-lg shadow-purple-200' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600 font-bold'}`}
             >
               <span className="text-sm font-bold uppercase tracking-tight">{tab}</span>
             </button>
@@ -235,7 +236,7 @@ function Dashboard({ orders, products, filaments, settings }) {
         <div className="p-4 bg-purple-50 text-purple-600 rounded-2xl"><TrendingUp size={24} /></div>
         <div>
           <h3 className="text-sm font-black uppercase text-slate-400 tracking-widest">Financieel Inzicht</h3>
-          <p className="text-slate-600 text-xs mt-1">Omzet en winst worden berekend op basis van volledig afgeronde bestellingen.</p>
+          <p className="text-slate-600 text-xs mt-1 font-bold">Omzet en winst worden berekend op basis van volledig afgeronde bestellingen.</p>
         </div>
       </div>
     </div>
@@ -259,6 +260,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
     customer: '', 
     messengerLink: '', 
     orderDate: new Date().toISOString().split('T')[0], 
+    orderTime: new Date().toTimeString().slice(0,5),
     items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }],
     comments: '' 
   });
@@ -289,6 +291,10 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
     onUpdate('orders', orderId, { items: newItems });
   };
 
+  const handleQuickCommentUpdate = (orderId, newComment) => {
+    onUpdate('orders', orderId, { comments: newComment });
+  };
+
   const OrderTable = ({ list, title, isCompletedSection = false }) => (
     <div className="space-y-4">
       <div className="flex items-center gap-3 px-4">
@@ -298,20 +304,22 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left">
           <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
-            <tr><th className="px-8 py-4">Klant / Tijdstip</th><th className="px-8 py-4">Items & Status</th><th className="px-8 py-4">Bedrag</th><th className="px-8 py-4 text-right">Beheer</th></tr>
+            <tr><th className="px-8 py-4">Klant / Tijd</th><th className="px-8 py-4">Items & Status</th><th className="px-8 py-4">Bedrag</th><th className="px-8 py-4">Snel-notitie</th><th className="px-8 py-4 text-right">Beheer</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {list.sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map(o => (
+            {list.sort((a,b) => {
+              // Oplopend voor openstaand (oudste boven), aflopend voor archief
+              const dateA = new Date(`${a.orderDate}T${a.orderTime || '00:00'}`);
+              const dateB = new Date(`${b.orderDate}T${b.orderTime || '00:00'}`);
+              return isCompletedSection ? dateB - dateA : dateA - dateB;
+            }).map(o => (
               <tr key={o.id} className="hover:bg-slate-50/30 transition-colors group">
                 <td className="px-8 py-5">
                   <div className="flex items-center gap-2">
                     <p className="font-bold text-slate-800">{o.customer}</p>
                     {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-600"><MessageCircle size={14}/></a>}
                   </div>
-                  <div className="flex flex-col gap-0.5 mt-0.5">
-                    <p className="text-[9px] text-slate-400 uppercase font-black">{new Date(o.createdAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                    {o.comments && <p className="text-[10px] text-purple-600 font-medium italic mt-1 flex items-center gap-1"><MessageSquare size={10}/> {o.comments}</p>}
-                  </div>
+                  <p className="text-[9px] text-slate-400 uppercase font-black">{o.orderDate} om {o.orderTime || '--:--'}</p>
                 </td>
                 <td className="px-8 py-5">
                   <div className="flex flex-col gap-2">
@@ -337,6 +345,17 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
                 <td className="px-8 py-5 font-black text-slate-900 text-sm italic">
                   €{(o.items || []).reduce((s, i) => s + (Number(i.price) * Number(i.quantity)), 0).toFixed(2)}
                 </td>
+                <td className="px-8 py-5">
+                  <div className="relative group/note max-w-[150px]">
+                    <input 
+                      type="text" 
+                      defaultValue={o.comments || ''} 
+                      onBlur={(e) => handleQuickCommentUpdate(o.id, e.target.value)}
+                      placeholder="Typ notitie..."
+                      className="w-full bg-slate-50 border-none rounded-lg p-2 text-[10px] font-bold text-slate-600 outline-none focus:bg-white focus:ring-1 focus:ring-purple-200 transition-all italic"
+                    />
+                  </div>
+                </td>
                 <td className="px-8 py-5 text-right flex justify-end gap-1">
                   <button onClick={() => { setEditingId(o.id); setFormData(o); setShowModal(true); }} className="p-2 text-slate-300 hover:text-purple-600 border-none bg-transparent outline-none cursor-pointer"><Edit3 size={16}/></button>
                   <button onClick={() => onDelete('orders', o.id)} className="p-2 text-slate-300 hover:text-rose-500 border-none bg-transparent outline-none cursor-pointer"><Trash2 size={16}/></button>
@@ -352,7 +371,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
   return (
     <div className="space-y-10">
       <button 
-        onClick={() => { setEditingId(null); setFormData({ customer: '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }], comments: '' }); setShowModal(true); }} 
+        onClick={() => { setEditingId(null); setFormData({ customer: '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], orderTime: new Date().toTimeString().slice(0,5), items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }], comments: '' }); setShowModal(true); }} 
         style={{ backgroundColor: '#9333ea' }}
         className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-xl hover:scale-105 transition-all border-none focus:outline-none cursor-pointer"
       >
@@ -373,18 +392,19 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
 
       {showModal && <Modal title={editingId ? "Bestelling Aanpassen" : "Nieuwe Bestelling"} onClose={() => setShowModal(false)}>
         <form onSubmit={handleSubmit} className="space-y-6">
+          <Input label="Klant Naam" value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} required />
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Klant Naam" value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} required />
-            <Input label="Datum" type="date" value={formData.orderDate} onChange={e => setFormData({...formData, orderDate: e.target.value})} required />
+            <Input label="Bestel Datum" type="date" value={formData.orderDate} onChange={e => setFormData({...formData, orderDate: e.target.value})} required />
+            <Input label="Bestel Tijd" type="time" value={formData.orderTime} onChange={e => setFormData({...formData, orderTime: e.target.value})} required />
           </div>
           <Input label="Chat Link" value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
           <div className="space-y-1">
-            <label className="text-[9px] font-black uppercase text-slate-400 ml-3 block tracking-widest font-black">Extra opmerkingen</label>
+            <label className="text-[9px] font-black uppercase text-slate-400 ml-3 block tracking-widest font-black">Commentaar / Notitie</label>
             <textarea 
               className="w-full p-5 bg-slate-50 rounded-[1.5rem] border-none font-bold text-slate-700 shadow-inner outline-none focus:bg-slate-100 transition-all appearance-none resize-none h-24"
               value={formData.comments}
               onChange={e => setFormData({...formData, comments: e.target.value})}
-              placeholder="Bijv: kleurwissel bij laag 40..."
+              placeholder="Bijv: Afhaalbericht verstuurd op 12-01..."
             />
           </div>
           <div className="space-y-3">
@@ -436,7 +456,6 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
       let reserved = 0;
       orders.forEach(o => {
         (o.items || []).forEach(item => {
-          // Logica aangepast: enkel afhalen bij "In de wacht" of "Printen"
           if (item.productId === p.id && (item.status === 'In de wacht' || item.status === 'Printen')) {
             reserved += Number(item.quantity) || 0;
           }
@@ -533,7 +552,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                       <td colSpan="4" className="px-12 py-6">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                           <div>
-                            <p className="text-[9px] font-black uppercase text-slate-400 mb-2">Details</p>
+                            <p className="text-[9px] font-black uppercase text-slate-400 mb-2 font-black">Details</p>
                             <p className="text-xs font-bold text-slate-600 italic">Tijd: {Math.floor(p.printTime / 60)}u {p.printTime % 60}m</p>
                             <p className="text-xs font-bold text-slate-600 italic">Gewicht: {p.weight}g</p>
                             <div className="mt-4 flex gap-2">
@@ -543,14 +562,14 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                             </div>
                           </div>
                           <div>
-                            <p className="text-[9px] font-black uppercase text-slate-400 mb-2">Kostprijs</p>
+                            <p className="text-[9px] font-black uppercase text-slate-400 mb-2 font-black">Kostprijs</p>
                             <p className="text-xl font-black italic text-slate-600">€{(matCost + energy).toFixed(2)}</p>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">Mat: €{matCost.toFixed(2)} • Stroom: €{energy.toFixed(2)}</p>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 font-black">Mat: €{matCost.toFixed(2)} • Stroom: €{energy.toFixed(2)}</p>
                           </div>
                           <div>
-                            <p className="text-[9px] font-black uppercase text-slate-400 mb-2">Verkoopprijs</p>
+                            <p className="text-[9px] font-black uppercase text-slate-400 mb-2 font-black">Verkoopprijs</p>
                             <p className="text-xl font-black italic text-purple-600">€{(p.suggestedPrice || 0).toFixed(2)}</p>
-                            <p className="text-[9px] text-emerald-500 font-black uppercase mt-1">Marge: €{(p.suggestedPrice - (matCost + energy)).toFixed(2)}</p>
+                            <p className="text-[9px] text-emerald-500 font-black uppercase mt-1 font-black">Marge: €{(p.suggestedPrice - (matCost + energy)).toFixed(2)}</p>
                           </div>
                         </div>
                       </td>
@@ -593,7 +612,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                       type="button" 
                       onClick={() => setFormData({...formData, filaments: assign ? formData.filaments.filter(f => f.key !== type.key) : [...formData.filaments, {key: type.key, weight: 0}]})} 
                       style={{ backgroundColor: assign ? '#9333ea' : '#fff' }}
-                      className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none cursor-pointer transition-all ${assign ? 'text-white shadow-md' : 'text-slate-400'}`}
+                      className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none cursor-pointer transition-all ${assign ? 'text-white shadow-md' : 'text-slate-400 font-bold'}`}
                     >
                       <div className="w-2.5 h-2.5 rounded-full border border-white shadow-sm" style={{backgroundColor: type.color}}></div> {type.brand} {type.colorName}
                     </button>
@@ -663,7 +682,7 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                     <tr key={r.id} className="bg-slate-50/30 border-l-4 border-purple-500">
                       <td colSpan="2" className="px-10 py-4">
                         <p className="text-[9px] font-black uppercase text-slate-400 font-black">Rol #{r.id.slice(-4)} ({r.status})</p>
-                        <p className="text-xs text-slate-500 font-bold italic">Sinds: {r.purchaseDate}</p>
+                        <p className="text-xs text-slate-500 font-bold italic font-bold">Sinds: {r.purchaseDate}</p>
                       </td>
                       <td className="px-8 py-4 font-black text-slate-600">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
                       <td className="px-8 py-4 text-right flex justify-end gap-2">
