@@ -45,8 +45,7 @@ import {
   Scale,
   ListChecks,
   PlayCircle,
-  Box,
-  MessageSquare
+  Box
 } from 'lucide-react';
 
 // Firebase Configuratie
@@ -176,7 +175,7 @@ export default function App() {
               key={tab} 
               onClick={() => setActiveTab(tab)} 
               style={{ backgroundColor: activeTab === tab ? '#9333ea' : 'transparent' }}
-              className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none focus:outline-none focus:ring-0 appearance-none select-none ${activeTab === tab ? 'text-white shadow-lg shadow-purple-200' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600'}`}
+              className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none focus:outline-none focus:ring-0 appearance-none select-none ${activeTab === tab ? 'text-white shadow-lg' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600'}`}
             >
               <span className="text-sm font-bold uppercase tracking-tight">{tab}</span>
             </button>
@@ -255,13 +254,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [showCompleted, setShowCompleted] = useState(false);
-  const [formData, setFormData] = useState({ 
-    customer: '', 
-    messengerLink: '', 
-    orderDate: new Date().toISOString().split('T')[0], 
-    items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }],
-    comments: '' 
-  });
+  const [formData, setFormData] = useState({ customer: '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }] });
 
   const grouped = useMemo(() => {
     const active = [];
@@ -281,14 +274,6 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
     setEditingId(null);
   };
 
-  const handleQuickStatusUpdate = (orderId, itemIndex, newStatus) => {
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return;
-    const newItems = [...order.items];
-    newItems[itemIndex].status = newStatus;
-    onUpdate('orders', orderId, { items: newItems });
-  };
-
   const OrderTable = ({ list, title, isCompletedSection = false }) => (
     <div className="space-y-4">
       <div className="flex items-center gap-3 px-4">
@@ -298,39 +283,24 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left">
           <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
-            <tr><th className="px-8 py-4">Klant / Tijdstip</th><th className="px-8 py-4">Items & Status</th><th className="px-8 py-4">Bedrag</th><th className="px-8 py-4 text-right">Beheer</th></tr>
+            <tr><th className="px-8 py-4">Klant</th><th className="px-8 py-4">Items</th><th className="px-8 py-4">Bedrag</th><th className="px-8 py-4 text-right">Beheer</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {list.sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map(o => (
-              <tr key={o.id} className="hover:bg-slate-50/30 transition-colors group">
+            {list.sort((a,b) => new Date(b.orderDate) - new Date(a.orderDate)).map(o => (
+              <tr key={o.id} className="hover:bg-slate-50/30 transition-colors">
                 <td className="px-8 py-5">
                   <div className="flex items-center gap-2">
                     <p className="font-bold text-slate-800">{o.customer}</p>
-                    {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-600"><MessageCircle size={14}/></a>}
+                    {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-400"><MessageCircle size={14}/></a>}
                   </div>
-                  <div className="flex flex-col gap-0.5 mt-0.5">
-                    <p className="text-[9px] text-slate-400 uppercase font-black">{new Date(o.createdAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                    {o.comments && <p className="text-[10px] text-purple-600 font-medium italic mt-1 flex items-center gap-1"><MessageSquare size={10}/> {o.comments}</p>}
-                  </div>
+                  <p className="text-[9px] text-slate-400 uppercase font-black">{o.orderDate}</p>
                 </td>
                 <td className="px-8 py-5">
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {(o.items || []).map((item, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase shrink-0 ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-400' : 'bg-purple-50 text-purple-600'}`}>
-                          {item.quantity}x {products.find(p => p.id === item.productId)?.name || '?'}
-                        </span>
-                        {!isCompletedSection && (
-                          <select 
-                            className="bg-transparent border-none text-[9px] font-black uppercase text-slate-400 hover:text-purple-600 cursor-pointer outline-none appearance-none"
-                            value={item.status}
-                            onChange={(e) => handleQuickStatusUpdate(o.id, idx, e.target.value)}
-                          >
-                            {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
-                        )}
-                        {isCompletedSection && <span className="text-[9px] font-black uppercase text-slate-300 italic">{item.status}</span>}
-                      </div>
+                      <span key={idx} className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-400' : 'bg-purple-50 text-purple-600'}`}>
+                        {item.quantity}x {products.find(p => p.id === item.productId)?.name || '?'} ({item.status})
+                      </span>
                     ))}
                   </div>
                 </td>
@@ -352,14 +322,14 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
   return (
     <div className="space-y-10">
       <button 
-        onClick={() => { setEditingId(null); setFormData({ customer: '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }], comments: '' }); setShowModal(true); }} 
+        onClick={() => { setEditingId(null); setFormData({ customer: '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }] }); setShowModal(true); }} 
         style={{ backgroundColor: '#9333ea' }}
         className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-xl hover:scale-105 transition-all border-none focus:outline-none cursor-pointer"
       >
         <Plus size={18} className="inline mr-2" strokeWidth={3} /> Bestelling Invoeren
       </button>
 
-      <OrderTable list={grouped.active} title="Openstaande Bestellingen" />
+      <OrderTable list={grouped.active} title="Actieve Bestellingen" />
 
       {grouped.completed.length > 0 && (
         <div className="space-y-4 pt-10">
@@ -378,17 +348,8 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
             <Input label="Datum" type="date" value={formData.orderDate} onChange={e => setFormData({...formData, orderDate: e.target.value})} required />
           </div>
           <Input label="Chat Link" value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
-          <div className="space-y-1">
-            <label className="text-[9px] font-black uppercase text-slate-400 ml-3 block tracking-widest font-black">Extra opmerkingen</label>
-            <textarea 
-              className="w-full p-5 bg-slate-50 rounded-[1.5rem] border-none font-bold text-slate-700 shadow-inner outline-none focus:bg-slate-100 transition-all appearance-none resize-none h-24"
-              value={formData.comments}
-              onChange={e => setFormData({...formData, comments: e.target.value})}
-              placeholder="Bijv: kleurwissel bij laag 40..."
-            />
-          </div>
           <div className="space-y-3">
-             <div className="flex justify-between items-center px-2"><label className="text-[9px] font-black uppercase text-slate-400">Producten</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase border-none bg-transparent cursor-pointer font-black">+ Item</button></div>
+             <div className="flex justify-between items-center px-2"><label className="text-[9px] font-black uppercase text-slate-400">Items</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase border-none bg-transparent cursor-pointer font-black">+ Item</button></div>
              <div className="space-y-3 bg-slate-50 p-4 rounded-2xl max-h-80 overflow-y-auto shadow-inner">
                {formData.items.map((it, idx) => (
                  <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 relative shadow-sm space-y-3">
@@ -414,7 +375,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
                ))}
              </div>
           </div>
-          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">Bestelling Opslaan</button>
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -436,10 +397,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
       let reserved = 0;
       orders.forEach(o => {
         (o.items || []).forEach(item => {
-          // Logica aangepast: enkel afhalen bij "In de wacht" of "Printen"
-          if (item.productId === p.id && (item.status === 'In de wacht' || item.status === 'Printen')) {
-            reserved += Number(item.quantity) || 0;
-          }
+          if (item.productId === p.id && item.status !== 'Afgerond') reserved += Number(item.quantity) || 0;
         });
       });
       data[p.id] = (p.stockQuantity || 0) - reserved;
@@ -604,7 +562,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
             </div>
           </div>
           <Input label="Verkoopprijs (€)" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} required />
-          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">Product Opslaan</button>
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">Opslaan</button>
         </form>
       </Modal>}
     </div>
