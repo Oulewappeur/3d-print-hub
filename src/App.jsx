@@ -42,11 +42,25 @@ import {
   User
 } from 'lucide-react';
 
-const firebaseConfig = JSON.parse(__firebase_config);
+const myFirebaseConfig = {
+  apiKey: "AIzaSyBbwO5zFRzKg_TeFSTGjm_G7OPitUtnDo0",
+  authDomain: "d-printer-orders-1b6f3.firebaseapp.com",
+  projectId: "d-printer-orders-1b6f3",
+  storageBucket: "d-printer-orders-1b6f3.firebasestorage.app",
+  messagingSenderId: "784230424225",
+  appId: "1:784230424225:web:abbfb3011e515e1f6d1ae0",
+  measurementId: "G-RJW0M8NF7Y"
+};
+
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : myFirebaseConfig;
+
+const hubId = typeof __app_id !== 'undefined' ? __app_id : 'd-printer-orders-1b6f3';
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'd-printer-orders-1b6f3';
 
 const TABS = {
   DASHBOARD: 'Dashboard',
@@ -81,23 +95,23 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    const publicPath = (name) => collection(db, 'artifacts', appId, 'public', 'data', name);
+    const getPath = (name) => collection(db, 'artifacts', hubId, 'public', 'data', name);
 
-    const unsubOrders = onSnapshot(query(publicPath('orders')), (snapshot) => {
+    const unsubOrders = onSnapshot(query(getPath('orders')), (snapshot) => {
       setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => {
       if (err.code === 'permission-denied') setAuthError("Geen toegang tot data.");
     });
 
-    const unsubProducts = onSnapshot(query(publicPath('products')), (snapshot) => {
+    const unsubProducts = onSnapshot(query(getPath('products')), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    const unsubFilaments = onSnapshot(query(publicPath('filaments')), (snapshot) => {
+    const unsubFilaments = onSnapshot(query(getPath('filaments')), (snapshot) => {
       setFilaments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    const unsubSettings = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), (docSnap) => {
+    const unsubSettings = onSnapshot(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), (docSnap) => {
       if (docSnap.exists()) setSettings(docSnap.data());
       setLoading(false);
     });
@@ -122,7 +136,7 @@ export default function App() {
 
   const addItem = async (coll, data) => {
     if (!user) return;
-    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', coll), {
+    await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), {
       ...data,
       status: data.status || 'actief',
       createdAt: new Date().toISOString()
@@ -131,17 +145,17 @@ export default function App() {
 
   const updateItem = async (coll, id, data) => {
     if (!user) return;
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', coll, id), data);
+    await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data);
   };
 
   const deleteItem = async (coll, id) => {
     if (!user) return;
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', coll, id));
+    await deleteDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id));
   };
 
   const saveSettings = async (data) => {
     if (!user) return;
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), data);
+    await setDoc(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), data);
   };
 
   if (loading) {
