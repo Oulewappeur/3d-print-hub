@@ -14,6 +14,7 @@ import {
 import { 
   getAuth, 
   signInAnonymously, 
+  signInWithCustomToken,
   onAuthStateChanged
 } from 'firebase/auth';
 import { 
@@ -46,6 +47,7 @@ import {
   MessageCircle
 } from 'lucide-react';
 
+// Firebase Configuratie
 const myFirebaseConfig = {
   apiKey: "AIzaSyBbwO5zFRzKg_TeFSTGjm_G7OPitUtnDo0",
   authDomain: "d-printer-orders-1b6f3.firebaseapp.com",
@@ -60,7 +62,8 @@ const firebaseConfig = typeof __firebase_config !== 'undefined'
   ? JSON.parse(__firebase_config) 
   : myFirebaseConfig;
 
-const hubId = typeof __app_id !== 'undefined' ? __app_id : 'd-printer-orders-1b6f3';
+// BELANGRIJK: We forceren de hubId naar jouw project-ID zodat de Rules altijd matchen
+const hubId = 'd-printer-orders-1b6f3'; 
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -86,11 +89,17 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
 
+  // AUTHENTICATIE (Rule 3: Auth Before Queries)
   useEffect(() => {
     const initAuth = async () => {
       try {
-        await signInAnonymously(auth);
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
       } catch (err) {
+        console.error("Auth error:", err);
         setErrorMessage("Verbinding met Firebase mislukt.");
         setLoading(false);
       }
@@ -98,31 +107,56 @@ export default function App() {
     initAuth();
     
     const unsubscribe = onAuthStateChanged(auth, (u) => {
-      if (u) setUser(u);
+      setUser(u);
     });
     return () => unsubscribe();
   }, []);
 
+  // DATA FETCHING (Start pas als 'user' er is)
   useEffect(() => {
     if (!user) return;
+
     const getPath = (name) => collection(db, 'artifacts', hubId, 'public', 'data', name);
 
-    const unsubOrders = onSnapshot(query(getPath('orders')), (snapshot) => {
-      setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setErrorMessage(null);
-      setLoading(false);
-    }, (err) => {
-      if (err.code === 'permission-denied') setErrorMessage("Toegang geweigerd.");
-      setLoading(false);
-    });
+    // Orders Listener met error handling
+    const unsubOrders = onSnapshot(query(getPath('orders')), 
+      (snapshot) => {
+        setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setErrorMessage(null);
+        setLoading(false);
+      }, 
+      (err) => {
+        console.error("Firestore error:", err);
+        if (err.code === 'permission-denied') {
+          setErrorMessage("Toegang geweigerd. Controleer of je Rules exact overeenkomen met het pad /artifacts/" + hubId + "/...");
+        }
+        setLoading(false);
+      }
+    );
 
-    const unsubProducts = onSnapshot(query(getPath('products')), (snapshot) => setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    const unsubFilaments = onSnapshot(query(getPath('filaments')), (snapshot) => setFilaments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    const unsubSettings = onSnapshot(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), (docSnap) => {
-      if (docSnap.exists()) setSettings(docSnap.data());
-    });
+    const unsubProducts = onSnapshot(query(getPath('products')), 
+      (snapshot) => setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
+      (err) => console.error("Products error:", err)
+    );
 
-    return () => { unsubOrders(); unsubProducts(); unsubFilaments(); unsubSettings(); };
+    const unsubFilaments = onSnapshot(query(getPath('filaments')), 
+      (snapshot) => setFilaments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
+      (err) => console.error("Filaments error:", err)
+    );
+
+    const unsubSettings = onSnapshot(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), 
+      (docSnap) => {
+        if (docSnap.exists()) setSettings(docSnap.data());
+      }, 
+      (err) => console.error("Settings error:", err)
+    );
+
+    return () => { 
+      unsubOrders(); 
+      unsubProducts(); 
+      unsubFilaments(); 
+      unsubSettings(); 
+    };
   }, [user]);
 
   const addItem = async (coll, data) => {
@@ -136,7 +170,9 @@ export default function App() {
       } else {
         await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), { ...data, status: data.status || 'actief', createdAt: new Date().toISOString() });
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error("Add error:", e);
+    }
   };
 
   const updateItem = async (coll, id, data) => { if (!user) return; try { await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data); } catch (e) {} };
@@ -148,7 +184,7 @@ export default function App() {
       <div className="flex h-screen items-center justify-center bg-white font-sans">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Laden...</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Authenticeren...</p>
         </div>
       </div>
     );
@@ -195,14 +231,15 @@ export default function App() {
         </div>
         
         {errorMessage && (
-          <div className="mt-auto p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-[10px] font-bold flex items-start gap-2">
-            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-            <span>{errorMessage}</span>
+          <div className="mt-auto p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-[10px] font-bold flex flex-col gap-2">
+            <div className="flex items-start gap-2">
+               <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+               <span>{errorMessage}</span>
+            </div>
           </div>
         )}
       </nav>
 
-      {/* Main Content Area */}
       <main className="flex-1 p-6 md:p-12 overflow-y-auto h-screen bg-[#FDFCFE]">
         <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
