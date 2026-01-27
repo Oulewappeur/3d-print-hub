@@ -47,7 +47,8 @@ import {
   PlayCircle,
   Box,
   MessageSquare,
-  Check
+  Check,
+  BarChart3
 } from 'lucide-react';
 
 // Firebase Configuratie
@@ -204,39 +205,142 @@ function Dashboard({ orders, products, filaments, settings }) {
   const stats = useMemo(() => {
     let revenue = 0;
     let cost = 0;
+    let pendingRevenue = 0;
+    const productStats = {};
+    const filamentNeeds = {};
     
     const completedOrders = orders.filter(o => (o.items || []).every(i => i.status === 'Afgerond'));
     const activeOrders = orders.filter(o => !(o.items || []).every(i => i.status === 'Afgerond'));
 
+    // Gerealiseerde stats
     completedOrders.forEach(o => {
       (o.items || []).forEach(item => {
-        revenue += (Number(item.price) || 0) * (Number(item.quantity) || 0);
+        const itemRev = (Number(item.price) || 0) * (Number(item.quantity) || 0);
+        revenue += itemRev;
+        
         const p = products.find(prod => prod.id === item.productId);
         if (p) {
           const matCost = (p.filaments || []).reduce((s, f) => s + (f.weight * getFilamentGramPrice(filaments, f.key)), 0);
           const energy = (p.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice;
-          cost += (matCost + energy) * (Number(item.quantity) || 0);
+          const totalItemCost = (matCost + energy) * (Number(item.quantity) || 0);
+          cost += totalItemCost;
+
+          if (!productStats[p.id]) productStats[p.id] = { name: p.name, revenue: 0, profit: 0, count: 0 };
+          productStats[p.id].revenue += itemRev;
+          productStats[p.id].profit += (itemRev - totalItemCost);
+          productStats[p.id].count += Number(item.quantity) || 0;
         }
       });
     });
 
-    return { revenue, profit: revenue - cost, openOrderCount: activeOrders.length, completedOrderCount: completedOrders.length };
+    // Prognose stats (Openstaande omzet & Filament benodigdheden)
+    activeOrders.forEach(o => {
+      (o.items || []).forEach(item => {
+        if (item.status !== 'Afgerond') {
+          pendingRevenue += (Number(item.price) || 0) * (Number(item.quantity) || 0);
+        }
+
+        // Filament prognose enkel voor "In de wacht"
+        if (item.status === 'In de wacht') {
+          const p = products.find(prod => prod.id === item.productId);
+          if (p && p.filaments) {
+            p.filaments.forEach(f => {
+              if (!filamentNeeds[f.key]) filamentNeeds[f.key] = 0;
+              filamentNeeds[f.key] += (f.weight * (Number(item.quantity) || 0));
+            });
+          }
+        }
+      });
+    });
+
+    return { 
+      revenue, 
+      profit: revenue - cost, 
+      pendingRevenue,
+      openOrderCount: activeOrders.length, 
+      completedOrderCount: completedOrders.length,
+      productStats: Object.values(productStats).sort((a,b) => b.revenue - a.revenue),
+      filamentNeeds: Object.entries(filamentNeeds).map(([key, weight]) => ({
+        key,
+        weight,
+        info: filaments.find(f => `${f.brand}-${f.materialType}-${f.colorName}` === key)
+      }))
+    };
   }, [orders, products, filaments, settings]);
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <StatCard title="Gerealiseerde Omzet" value={`€${stats.revenue.toFixed(2)}`} color="text-purple-600" />
         <StatCard title="Gerealiseerde Winst" value={`€${stats.profit.toFixed(2)}`} color="text-emerald-600" />
+        <StatCard title="Te Realiseren Omzet" value={`€${stats.pendingRevenue.toFixed(2)}`} color="text-blue-500" />
         <StatCard title="Openstaande Orders" value={stats.openOrderCount} color="text-orange-500" />
         <StatCard title="Afgeronde Orders" value={stats.completedOrderCount} color="text-slate-400" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+        {/* Product Prestaties */}
+        <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
+          <div className="flex items-center gap-3 mb-8">
+             <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><BarChart3 size={20}/></div>
+             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Prestaties per Product</h2>
+          </div>
+          <div className="overflow-hidden">
+            <table className="w-full text-left">
+               <thead className="text-[9px] uppercase font-black text-slate-300 border-b border-slate-50">
+                 <tr><th className="pb-4">Product</th><th className="pb-4 text-center">Verkocht</th><th className="pb-4 text-right">Winst</th></tr>
+               </thead>
+               <tbody className="divide-y divide-slate-50">
+                 {stats.productStats.length === 0 ? (
+                   <tr><td colSpan="3" className="py-8 text-center text-xs text-slate-300 italic">Nog geen data beschikbaar</td></tr>
+                 ) : (
+                   stats.productStats.slice(0, 5).map((ps, idx) => (
+                    <tr key={idx}>
+                      <td className="py-4 font-bold text-slate-700 text-sm">{ps.name}</td>
+                      <td className="py-4 text-center font-black text-slate-400 text-xs">{ps.count}x</td>
+                      <td className="py-4 text-right font-black text-emerald-500 text-sm">€{ps.profit.toFixed(2)}</td>
+                    </tr>
+                   ))
+                 )}
+               </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Filament Prognose */}
+        <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
+          <div className="flex items-center gap-3 mb-8">
+             <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Database size={20}/></div>
+             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Filament Prognose (Wachtrij)</h2>
+          </div>
+          <div className="space-y-4">
+             {stats.filamentNeeds.length === 0 ? (
+               <div className="py-8 text-center text-xs text-slate-300 italic">Geen filament vereist voor huidige wachtrij</div>
+             ) : (
+               stats.filamentNeeds.map((need, idx) => (
+                 <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                    <div className="flex items-center gap-3">
+                       <div className="w-4 h-4 rounded-full border border-white shadow-sm" style={{ backgroundColor: need.info?.colorCode || '#ccc' }}></div>
+                       <div>
+                          <p className="text-xs font-bold text-slate-700">{need.info ? `${need.info.brand} ${need.info.materialType}` : 'Onbekend Filament'}</p>
+                          <p className="text-[9px] font-black uppercase text-slate-400">{need.info?.colorName || need.key}</p>
+                       </div>
+                    </div>
+                    <div className="text-right">
+                       <p className="text-sm font-black text-slate-600 italic">{Math.round(need.weight)}g</p>
+                    </div>
+                 </div>
+               ))
+             )}
+          </div>
+        </div>
       </div>
 
       <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-6">
         <div className="p-4 bg-purple-50 text-purple-600 rounded-2xl"><TrendingUp size={24} /></div>
         <div>
           <h3 className="text-sm font-black uppercase text-slate-400 tracking-widest">Financieel Inzicht</h3>
-          <p className="text-slate-600 text-xs mt-1 font-bold">Omzet en winst worden berekend op basis van volledig afgeronde bestellingen.</p>
+          <p className="text-slate-600 text-xs mt-1 font-bold">Gerealiseerde omzet en winst worden berekend op basis van volledig afgeronde bestellingen. Prognoses kijken naar alle openstaande items.</p>
         </div>
       </div>
     </div>
@@ -247,7 +351,7 @@ function StatCard({ title, value, color }) {
   return (
     <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-center">
       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 text-center">{title}</p>
-      <p className={`text-3xl font-black italic tracking-tighter ${color}`}>{value}</p>
+      <p className={`text-2xl font-black italic tracking-tighter ${color}`}>{value}</p>
     </div>
   );
 }
@@ -308,7 +412,6 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
           </thead>
           <tbody className="divide-y divide-slate-50">
             {list.sort((a,b) => {
-              // Oplopend voor openstaand (oudste boven), aflopend voor archief
               const dateA = new Date(`${a.orderDate}T${a.orderTime || '00:00'}`);
               const dateB = new Date(`${b.orderDate}T${b.orderTime || '00:00'}`);
               return isCompletedSection ? dateB - dateA : dateA - dateB;
@@ -411,7 +514,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
              <div className="flex justify-between items-center px-2"><label className="text-[9px] font-black uppercase text-slate-400">Producten</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase border-none bg-transparent cursor-pointer font-black">+ Item</button></div>
              <div className="space-y-3 bg-slate-50 p-4 rounded-2xl max-h-80 overflow-y-auto shadow-inner">
                {formData.items.map((it, idx) => (
-                 <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 relative shadow-sm space-y-3">
+                 <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 relative shadow-sm style={{  }}">
                    {formData.items.length > 1 && <button type="button" onClick={() => setFormData({...formData, items: formData.items.filter((_, i) => i !== idx)})} className="absolute top-1 right-1 text-slate-200 hover:text-rose-500 border-none bg-transparent"><Minus size={14}/></button>}
                    <select required className="w-full p-2 bg-slate-50 rounded-lg text-xs font-bold border-none appearance-none outline-none" value={it.productId} onChange={e => {
                      const newItems = [...formData.items]; 
