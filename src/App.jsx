@@ -87,14 +87,16 @@ export default function App() {
       try {
         await signInAnonymously(auth);
       } catch (err) {
-        setErrorMessage("Database verbinding mislukt.");
+        setErrorMessage("Verbinding met Firebase mislukt.");
         setLoading(false);
       }
     };
     initAuth();
     
     const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
+      if (u) {
+        setUser(u);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -112,7 +114,7 @@ export default function App() {
       }, 
       (err) => {
         if (err.code === 'permission-denied') {
-          setErrorMessage("Toegang geweigerd. Update je Firebase Rules in de console.");
+          setErrorMessage("Toegang geweigerd. Zorg dat de Firebase Rules op 'if true' staan.");
         }
         setLoading(false);
       }
@@ -183,7 +185,7 @@ export default function App() {
       <div className="flex h-screen items-center justify-center bg-white font-sans">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Verbinding maken...</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Data ophalen...</p>
         </div>
       </div>
     );
@@ -206,7 +208,7 @@ export default function App() {
               <button 
                 key={tab}
                 onClick={() => setActiveTab(tab)} 
-                className={`flex items-center gap-3 px-5 py-4 rounded-2xl transition-all duration-200 border-none outline-none shadow-none ring-0 ${
+                className={`flex items-center gap-3 px-5 py-4 rounded-2xl transition-all duration-200 border-0 outline-none ring-0 focus:ring-0 focus:outline-none ${
                   isActive 
                     ? 'bg-purple-600 text-white shadow-xl shadow-purple-100 font-bold translate-x-1' 
                     : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
@@ -390,7 +392,7 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
     <div className="space-y-10">
       <button 
         onClick={() => setShowModal(true)} 
-        className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-none outline-none italic tracking-tight"
+        className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-0 outline-none ring-0 italic tracking-tight"
       >
         <Plus size={28} strokeWidth={4} /> BESTELLING INVOEREN
       </button>
@@ -448,7 +450,7 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
                     </select>
                   </td>
                   <td className="px-10 py-10 text-right">
-                    <button onClick={() => onDelete('orders', order.id)} className="text-slate-200 hover:text-rose-500 p-4 bg-slate-50/50 rounded-3xl transition-all border-none outline-none ring-0 shadow-none"><Trash2 size={24} strokeWidth={2.5}/></button>
+                    <button onClick={() => onDelete('orders', order.id)} className="text-slate-200 hover:text-rose-500 p-4 bg-slate-50/50 rounded-3xl transition-all border-0 outline-none ring-0 shadow-none"><Trash2 size={24} strokeWidth={2.5}/></button>
                   </td>
                 </tr>
               );
@@ -496,8 +498,8 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
               </div>
               <textarea rows="3" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-slate-700 shadow-inner" placeholder="Extra opmerkingen..." value={formData.comments} onChange={e => setFormData({...formData, comments: e.target.value})} />
               <div className="flex gap-8 pt-8">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-[0.2em] text-xs outline-none border-none ring-0">Annuleren</button>
-                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-none outline-none ring-0 italic">OPSLAAN</button>
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-[0.2em] text-xs border-0 outline-none ring-0">Annuleren</button>
+                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-0 outline-none ring-0 italic">OPSLAAN</button>
               </div>
             </form>
           </div>
@@ -544,7 +546,7 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
     <div className="space-y-12">
       <button 
         onClick={() => setShowModal(true)} 
-        className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-none outline-none italic tracking-tight"
+        className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-0 outline-none ring-0 italic tracking-tight"
       >
         <Plus size={28} strokeWidth={4} /> NIEUW PRODUCT
       </button>
@@ -582,7 +584,7 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
                   <p className="text-2xl font-black text-purple-600 tracking-tighter">€{(product.suggestedPrice || 0).toFixed(2)}</p>
                 </div>
               </div>
-              <button onClick={() => onDelete('products', product.id)} className="absolute top-10 right-10 text-slate-100 hover:text-rose-500 p-3 border-none outline-none ring-0 shadow-none transition-colors"><Trash2 size={24}/></button>
+              <button onClick={() => onDelete('products', product.id)} className="absolute top-10 right-10 text-slate-100 hover:text-rose-500 p-3 border-0 outline-none ring-0 shadow-none transition-colors"><Trash2 size={24}/></button>
             </div>
           );
         })}
@@ -616,10 +618,10 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
                       key={f.id}
                       type="button"
                       onClick={() => toggleFilament(f.id)}
-                      className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all text-left outline-none border-none ring-0 shadow-none ${
+                      className={`flex items-center gap-3 p-4 rounded-2xl border-0 ring-0 outline-none transition-all text-left shadow-none ${
                         formData.filamentIds.includes(f.id) 
-                          ? 'bg-purple-50 border-purple-500 ring-2 ring-purple-500' 
-                          : 'bg-white shadow-sm border-transparent'
+                          ? 'bg-purple-100 text-purple-900 ring-2 ring-purple-500' 
+                          : 'bg-white shadow-sm'
                       }`}
                     >
                       <div className="w-5 h-5 rounded-full shadow-inner border border-slate-100" style={{ backgroundColor: f.colorCode }}></div>
@@ -638,8 +640,8 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
               </div>
               
               <div className="flex gap-8 pt-8">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest text-xs border-none outline-none ring-0">Annuleren</button>
-                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-none outline-none ring-0 italic">OPSLAAN</button>
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest text-xs border-0 outline-none ring-0">Annuleren</button>
+                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-0 outline-none ring-0 italic">OPSLAAN</button>
               </div>
             </form>
           </div>
@@ -708,13 +710,13 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
         <button 
           onClick={() => openModal('add')} 
-          className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-none outline-none italic"
+          className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-0 outline-none italic"
         >
           <Plus size={28} strokeWidth={4} /> NIEUWE ROL
         </button>
         <button 
           onClick={() => setShowArchived(!showArchived)} 
-          className="flex items-center gap-4 px-10 py-5 bg-white border-2 border-slate-100 rounded-[2.5rem] font-black text-xs uppercase tracking-widest text-slate-400 transition-all hover:border-purple-200 hover:text-purple-600 outline-none border-none ring-0 shadow-sm"
+          className="flex items-center gap-4 px-10 py-5 bg-white border-2 border-slate-100 rounded-[2.5rem] font-black text-xs uppercase tracking-widest text-slate-400 transition-all hover:border-purple-200 hover:text-purple-600 outline-none border-0 ring-0 shadow-sm"
         >
           {showArchived ? 'Actieve Rollen' : 'Archief (Leeg)'}
         </button>
@@ -744,13 +746,13 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
                   </div>
                 </div>
                 <div className="flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openModal('edit', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-none outline-none ring-0 transition-colors"><Edit3 size={20}/></button>
-                  <button onClick={() => openModal('copy', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-none outline-none ring-0 transition-colors"><Copy size={20}/></button>
-                  <button onClick={() => onDelete('filaments', fil.id)} className="text-slate-300 hover:text-rose-500 p-2 border-none outline-none ring-0 transition-colors"><Trash2 size={20}/></button>
+                  <button onClick={() => openModal('edit', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-0 outline-none ring-0 transition-colors"><Edit3 size={20}/></button>
+                  <button onClick={() => openModal('copy', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-0 outline-none ring-0 transition-colors"><Copy size={20}/></button>
+                  <button onClick={() => onDelete('filaments', fil.id)} className="text-slate-300 hover:text-rose-500 p-2 border-0 outline-none ring-0 transition-colors"><Trash2 size={20}/></button>
                   {fil.status === 'actief' ? (
-                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'leeg' })} className="text-slate-300 hover:text-purple-500 p-2 border-none outline-none ring-0 transition-colors"><Archive size={20}/></button>
+                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'leeg' })} className="text-slate-300 hover:text-purple-500 p-2 border-0 outline-none ring-0 transition-colors"><Archive size={20}/></button>
                   ) : (
-                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'actief' })} className="text-slate-300 hover:text-emerald-500 p-2 border-none outline-none ring-0 transition-colors"><RefreshCw size={20}/></button>
+                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'actief' })} className="text-slate-300 hover:text-emerald-500 p-2 border-0 outline-none ring-0 transition-colors"><RefreshCw size={20}/></button>
                   )}
                 </div>
               </div>
@@ -768,7 +770,7 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
               {fil.status === 'actief' && (
                 <div className="bg-slate-50 p-6 rounded-[2.5rem] flex items-center gap-5 border-2 border-transparent focus-within:border-purple-200 transition-all shadow-inner group-focus-within:shadow-none">
                    <Hash size={24} className="text-purple-500 shrink-0" />
-                   <input type="number" placeholder="Verbruik invoeren..." className="w-full bg-transparent outline-none font-black text-slate-800 text-base border-none shadow-none focus:ring-0" onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value) { onUpdate('filaments', fil.id, { usedWeight: (fil.usedWeight || 0) + Number(e.target.value) }); e.target.value = ''; } }} />
+                   <input type="number" placeholder="Verbruik invoeren..." className="w-full bg-transparent border-0 outline-none ring-0 font-black text-slate-800 text-base" onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value) { onUpdate('filaments', fil.id, { usedWeight: (fil.usedWeight || 0) + Number(e.target.value) }); e.target.value = ''; } }} />
                 </div>
               )}
             </div>
@@ -838,8 +840,8 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
               </div>
 
               <div className="flex gap-8 pt-8">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest text-xs border-none outline-none ring-0">Annuleren</button>
-                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-none outline-none ring-0 italic">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest text-xs border-0 outline-none ring-0">Annuleren</button>
+                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-0 outline-none ring-0 italic">
                   {modalMode === 'edit' ? 'BIJWERKEN' : 'OPSLAAN'}
                 </button>
               </div>
@@ -868,7 +870,7 @@ function SettingsPanel({ settings, onSave }) {
           <label className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Printer Wattage (W)</label>
           <input type="number" className="w-full p-8 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[3rem] outline-none font-black text-5xl text-center shadow-inner tracking-tighter" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
         </div>
-        <button onClick={() => onSave(temp)} className="w-full py-10 bg-purple-600 hover:bg-purple-700 text-white rounded-[3rem] font-black text-3xl shadow-2xl shadow-purple-200 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border-none outline-none ring-0 shadow-none italic">OPSLAAN</button>
+        <button onClick={() => onSave(temp)} className="w-full py-10 bg-purple-600 hover:bg-purple-700 text-white rounded-[3rem] font-black text-3xl shadow-2xl shadow-purple-200 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border-0 outline-none ring-0 italic">OPSLAAN</button>
       </div>
     </div>
   );
