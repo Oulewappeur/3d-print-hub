@@ -15,7 +15,10 @@ import {
   getAuth, 
   signInAnonymously, 
   signInWithCustomToken, 
-  onAuthStateChanged 
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut
 } from 'firebase/auth';
 import { 
   Package, 
@@ -42,7 +45,9 @@ import {
   Edit3,
   Store,
   ShieldCheck,
-  Lock
+  Lock,
+  LogOut,
+  LogIn
 } from 'lucide-react';
 
 /**
@@ -61,14 +66,12 @@ const myFirebaseConfig = {
 /**
  * EXCLUSIEVE BEVEILIGINGSRULES (Alleen voor JOU):
  * Kopieer dit naar Firebase Console -> Firestore -> Rules.
- * Vervang 'jouw-email@gmail.com' door je eigen adres.
+ * Vervang 'jouw-email@gmail.com' door je eigen Gmail adres.
  * * service cloud.firestore {
  * match /databases/{database}/documents {
  * match /artifacts/d-printer-orders-1b6f3/{document=**} {
- * // Alleen toegang als de ingelogde persoon jouw email heeft
+ * // Alleen toegang als je bent ingelogd EN je email overeenkomt met jouw adres
  * allow read, write: if request.auth != null && request.auth.token.email == "jouw-email@gmail.com";
- * * // Gebruik je anoniem inloggen? Gebruik dan de onderstaande regel (minder veilig):
- * // allow read, write: if request.auth != null;
  * }
  * }
  * }
@@ -83,6 +86,7 @@ const hubId = typeof __app_id !== 'undefined' ? __app_id : 'd-printer-orders-1b6
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const googleProvider = new GoogleAuthProvider();
 
 const TABS = {
   DASHBOARD: 'Dashboard',
@@ -110,7 +114,7 @@ export default function App() {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
-          // Voorlopig anoniem, maar klaar voor Google Auth
+          // Probeer eerst anoniem voor de 'preview' ervaring
           await signInAnonymously(auth);
         }
       } catch (err) {
@@ -123,6 +127,7 @@ export default function App() {
     
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
+      // Als we een user hebben, laden we de data. Loading gaat uit in de settings snapshot.
       if (!u) setLoading(false);
     });
     return () => unsubscribe();
@@ -136,10 +141,11 @@ export default function App() {
     const unsubOrders = onSnapshot(query(getPath('orders')), 
       (snapshot) => {
         setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setErrorMessage(null); // Clear error als het lukt
       }, 
       (err) => {
         if (err.code === 'permission-denied') {
-          setErrorMessage("Toegang geweigerd. Alleen geautoriseerde gebruikers mogen deze data zien.");
+          setErrorMessage("Toegang geweigerd. Log in met het juiste Google-account.");
         }
       }
     );
@@ -176,6 +182,18 @@ export default function App() {
       unsubSettings();
     };
   }, [user]);
+
+  const handleGoogleLogin = async () => {
+    try {
+      setErrorMessage(null);
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      console.error("Login Error:", err);
+      setErrorMessage("Inloggen mislukt. Controleer of Google Auth aan staat in Firebase.");
+    }
+  };
+
+  const handleLogout = () => signOut(auth);
 
   const addItem = async (coll, data) => {
     if (!user) return;
@@ -233,7 +251,7 @@ export default function App() {
       <div className="flex h-screen items-center justify-center bg-white">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-xl font-black text-purple-600 uppercase tracking-widest">3D Hub Beveiligen...</p>
+          <p className="text-xl font-black text-purple-600 uppercase tracking-widest text-sm">3D Hub Beveiligen...</p>
         </div>
       </div>
     );
@@ -243,7 +261,7 @@ export default function App() {
     <div className="min-h-screen bg-[#FDFCFE] flex flex-col md:flex-row font-sans text-slate-900">
       <nav className="w-full md:w-64 bg-white border-r border-slate-200 p-6 flex flex-col gap-2 shadow-sm z-20">
         <div className="text-2xl font-black text-purple-600 mb-10 flex items-center gap-3 px-2">
-          <div className="p-2 bg-purple-50 rounded-xl">
+          <div className="p-2 bg-purple-50 rounded-xl text-purple-600">
             <Printer size={28} strokeWidth={3} />
           </div>
           3D Hub
@@ -275,28 +293,46 @@ export default function App() {
           );
         })}
         
-        <div className="mt-auto p-4 bg-slate-50 rounded-2xl text-[10px] text-slate-400 font-mono break-all border border-slate-100">
-          <div className="mb-2 flex items-center justify-center gap-2">
-            {user?.isAnonymous ? (
-              <>
-                <Lock size={12} className="text-orange-500" />
-                <span className="font-bold uppercase tracking-widest text-orange-600">Beperkte Sessie</span>
-              </>
-            ) : (
-              <>
-                <ShieldCheck size={12} className="text-green-500" />
-                <span className="font-bold uppercase tracking-widest text-green-600">Volledig Beveiligd</span>
-              </>
+        <div className="mt-auto pt-6 border-t border-slate-100 flex flex-col gap-4">
+          {user?.isAnonymous || !user ? (
+            <button 
+              onClick={handleGoogleLogin}
+              className="flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+            >
+              <LogIn size={16} /> Inloggen met Google
+            </button>
+          ) : (
+            <button 
+              onClick={handleLogout}
+              className="flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-rose-50 text-rose-600 font-bold text-xs hover:bg-rose-100 transition-all"
+            >
+              <LogOut size={16} /> Uitloggen
+            </button>
+          )}
+
+          <div className="p-4 bg-slate-50 rounded-2xl text-[10px] text-slate-400 font-mono break-all border border-slate-100">
+            <div className="mb-2 flex items-center justify-center gap-2">
+              {user?.isAnonymous || !user ? (
+                <>
+                  <Lock size={12} className="text-orange-500" />
+                  <span className="font-bold uppercase tracking-widest text-orange-600">Beperkte Sessie</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={12} className="text-green-500" />
+                  <span className="font-bold uppercase tracking-widest text-green-600">Volledig Beveiligd</span>
+                </>
+              )}
+            </div>
+            {user?.email && <div className="mb-1 truncate font-bold text-slate-600 text-center">{user.email}</div>}
+            
+            {errorMessage && (
+              <div className="mt-2 p-2 bg-red-100 text-red-600 rounded text-[9px] font-bold">
+                <AlertTriangle size={10} className="inline mr-1 mb-0.5" />
+                {errorMessage}
+              </div>
             )}
           </div>
-          {user?.email && <div className="mb-1 truncate font-bold text-slate-600">{user.email}</div>}
-          Project: {hubId}
-          {errorMessage && (
-            <div className="mt-2 p-2 bg-red-100 text-red-600 rounded text-[9px] font-bold">
-              <AlertTriangle size={10} className="inline mr-1 mb-0.5" />
-              {errorMessage}
-            </div>
-          )}
         </div>
       </nav>
 
