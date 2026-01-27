@@ -7,17 +7,14 @@ import {
   addDoc, 
   onSnapshot, 
   updateDoc, 
-  deleteDoc, 
-  setDoc, 
-  query 
+  deleteDoc,
+  setDoc,
+  query
 } from 'firebase/firestore';
 import { 
   getAuth, 
-  signInAnonymously, 
-  signInWithCustomToken, 
   onAuthStateChanged,
-  GoogleAuthProvider,
-  signInWithPopup,
+  signInWithEmailAndPassword,
   signOut
 } from 'firebase/auth';
 import { 
@@ -29,54 +26,27 @@ import {
   Trash2, 
   Settings, 
   Printer, 
-  Zap, 
-  AlertTriangle, 
-  LayoutDashboard, 
-  TrendingUp, 
-  Clock, 
-  Euro, 
-  Hash, 
-  Archive, 
-  RefreshCw, 
-  MessageSquare, 
-  CheckCircle2, 
-  Calendar,
-  Copy,
-  Edit3,
-  Store,
-  ShieldCheck,
+  Zap,
+  AlertTriangle,
+  LayoutDashboard,
+  TrendingUp,
+  Clock,
+  Euro,
+  Hash,
+  Archive,
+  RefreshCw,
+  MessageSquare,
+  CheckCircle2,
   Lock,
   LogOut,
-  LogIn,
-  User,
-  Info,
-  ChevronRight
+  User
 } from 'lucide-react';
 
-const myFirebaseConfig = {
-  apiKey: "AIzaSyBbwO5zFRzKg_TeFSTGjm_G7OPitUtnDo0",
-  authDomain: "d-printer-orders-1b6f3.firebaseapp.com",
-  projectId: "d-printer-orders-1b6f3",
-  storageBucket: "d-printer-orders-1b6f3.firebasestorage.app",
-  messagingSenderId: "784230424225",
-  appId: "1:784230424225:web:abbfb3011e515e1f6d1ae0",
-  measurementId: "G-RJW0M8NF7Y"
-};
-
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-  ? JSON.parse(__firebase_config) 
-  : myFirebaseConfig;
-
-const hubId = typeof __app_id !== 'undefined' ? __app_id : 'd-printer-orders-1b6f3';
-
+const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const googleProvider = new GoogleAuthProvider();
-
-googleProvider.setCustomParameters({
-  prompt: 'select_account'
-});
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'd-printer-orders-1b6f3';
 
 const TABS = {
   DASHBOARD: 'Dashboard',
@@ -96,24 +66,11 @@ export default function App() {
   const [filaments, setFilaments] = useState([]);
   const [settings, setSettings] = useState({ kwhPrice: 0.35, printerWattage: 150 });
   const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState(null);
-  const [authErrorCode, setAuthErrorCode] = useState(null);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [authError, setAuthError] = useState('');
 
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        setErrorMessage("Systeemfout bij laden sessie.");
-        setLoading(false);
-      }
-    };
-    initAuth();
-    
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       if (!u) setLoading(false);
@@ -124,39 +81,26 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    const getPath = (name) => collection(db, 'artifacts', hubId, 'public', 'data', name);
+    const publicPath = (name) => collection(db, 'artifacts', appId, 'public', 'data', name);
 
-    const unsubOrders = onSnapshot(query(getPath('orders')), 
-      (snapshot) => {
-        setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        setErrorMessage(null);
-      }, 
-      (err) => {
-        if (err.code === 'permission-denied') {
-          setErrorMessage("Toegang geweigerd door de database. Log in met antonmol.90@gmail.com.");
-        }
-      }
-    );
+    const unsubOrders = onSnapshot(query(publicPath('orders')), (snapshot) => {
+      setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => {
+      if (err.code === 'permission-denied') setAuthError("Geen toegang tot data.");
+    });
 
-    const unsubProducts = onSnapshot(query(getPath('products')), 
-      (snapshot) => setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
-      (err) => console.error(err)
-    );
+    const unsubProducts = onSnapshot(query(publicPath('products')), (snapshot) => {
+      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
-    const unsubFilaments = onSnapshot(query(getPath('filaments')), 
-      (snapshot) => setFilaments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
-      (err) => console.error(err)
-    );
+    const unsubFilaments = onSnapshot(query(publicPath('filaments')), (snapshot) => {
+      setFilaments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
-    const unsubSettings = onSnapshot(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), 
-      (docSnap) => {
-        if (docSnap.exists()) setSettings(docSnap.data());
-        setLoading(false);
-      }, 
-      (err) => {
-        setLoading(false);
-      }
-    );
+    const unsubSettings = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), (docSnap) => {
+      if (docSnap.exists()) setSettings(docSnap.data());
+      setLoading(false);
+    });
 
     return () => {
       unsubOrders();
@@ -166,213 +110,141 @@ export default function App() {
     };
   }, [user]);
 
-  const handleGoogleLogin = async () => {
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthError('');
     try {
-      setErrorMessage(null);
-      setAuthErrorCode(null);
-      await signInWithPopup(auth, googleProvider);
+      await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
     } catch (err) {
-      setAuthErrorCode(err.code);
-      if (err.code === 'auth/operation-not-allowed') {
-        setErrorMessage("Google Login is nog niet ingeschakeld in je Firebase Console.");
-      } else if (err.code === 'auth/unauthorized-domain') {
-        setErrorMessage("Dit domein is niet geautoriseerd in Firebase.");
-      } else if (err.code === 'auth/popup-blocked') {
-        setErrorMessage("De browser blokkeerde de pop-up. Sta pop-ups toe.");
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        setErrorMessage("Het inlogvenster werd gesloten.");
-      } else {
-        setErrorMessage(`Inloggen mislukt: ${err.message}`);
-      }
+      setAuthError("Inloggen mislukt. Controleer je gegevens.");
     }
   };
 
-  const handleLogout = () => signOut(auth);
-
   const addItem = async (coll, data) => {
     if (!user) return;
-    try {
-      if (coll === 'filaments' && data.quantity > 1) {
-        const { quantity, ...singleData } = data;
-        for (let i = 0; i < quantity; i++) {
-          await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), {
-            ...singleData, status: 'actief', createdAt: new Date().toISOString()
-          });
-        }
-      } else {
-        await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), {
-          ...data, status: data.status || 'actief', createdAt: new Date().toISOString()
-        });
-      }
-    } catch (e) {
-      if (e.code === 'permission-denied') setErrorMessage("Je hebt geen rechten.");
-    }
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', coll), {
+      ...data,
+      status: data.status || 'actief',
+      createdAt: new Date().toISOString()
+    });
   };
 
   const updateItem = async (coll, id, data) => {
     if (!user) return;
-    try { await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data); } catch (e) {}
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', coll, id), data);
   };
 
   const deleteItem = async (coll, id) => {
     if (!user) return;
-    try { await deleteDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id)); } catch (e) {}
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', coll, id));
   };
 
   const saveSettings = async (data) => {
     if (!user) return;
-    try { await setDoc(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), data); } catch (e) {}
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), data);
   };
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-white font-sans">
-        <div className="text-center">
-          <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Verbinding maken...</p>
+      <div className="flex h-screen items-center justify-center bg-white">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-md bg-white rounded-[2.5rem] p-10 shadow-xl border border-slate-100">
+          <div className="flex flex-col items-center mb-8">
+            <div className="p-4 bg-blue-50 rounded-2xl text-blue-600 mb-4">
+              <Lock size={32} />
+            </div>
+            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">3D Hub Login</h1>
+            <p className="text-slate-400 text-sm font-medium mt-1">Beveiligde toegang voor Anton</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-2">E-mailadres</label>
+              <input 
+                required 
+                type="email" 
+                className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold transition-all" 
+                value={loginEmail} 
+                onChange={e => setLoginEmail(e.target.value)} 
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Wachtwoord</label>
+              <input 
+                required 
+                type="password" 
+                className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold transition-all" 
+                value={loginPassword} 
+                onChange={e => setLoginPassword(e.target.value)} 
+              />
+            </div>
+            {authError && <p className="text-xs font-bold text-red-500 text-center">{authError}</p>}
+            <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-lg shadow-lg shadow-blue-100 active:scale-95 transition-all">
+              INLOGGEN
+            </button>
+          </form>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFCFE] flex flex-col md:flex-row font-sans text-slate-900">
-      <nav className="w-full md:w-80 bg-white border-r border-slate-200 p-8 flex flex-col gap-2 shadow-sm z-20">
-        <div className="text-2xl font-black text-purple-600 mb-12 flex items-center gap-3">
-          <div className="p-2.5 bg-purple-50 rounded-2xl text-purple-600">
-            <Printer size={28} strokeWidth={3} />
-          </div>
-          3D Hub
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900">
+      <nav className="w-full md:w-64 bg-white border-r border-slate-200 p-6 flex flex-col gap-2 shadow-sm z-10">
+        <div className="text-2xl font-black text-blue-600 mb-10 px-2 flex items-center gap-2">
+          <Printer size={28} strokeWidth={3} /> 3D Hub
         </div>
         
-        <div className="flex flex-col gap-1 flex-1">
-          {Object.values(TABS).map(tab => {
-            const isActive = activeTab === tab;
-            return (
-              <button 
-                key={tab}
-                onClick={() => setActiveTab(tab)} 
-                className={`flex items-center gap-3 px-5 py-4 rounded-2xl transition-all duration-200 border-none outline-none ${
-                  isActive 
-                    ? 'bg-purple-600 text-white shadow-xl shadow-purple-100 font-bold translate-x-1' 
-                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-                }`}
-              >
-                {tab === TABS.DASHBOARD && <LayoutDashboard size={20} />}
-                {tab === TABS.ORDERS && <ShoppingCart size={20} />}
-                {tab === TABS.CATALOG && <Package size={20} />}
-                {tab === TABS.STOCK && <Database size={20} />}
-                {tab === TABS.SETTINGS && <Settings size={20} />}
-                <span className="text-sm tracking-tight">{tab}</span>
-              </button>
-            );
-          })}
+        <div className="flex-1 space-y-1">
+          {Object.values(TABS).map(tab => (
+            <button 
+              key={tab}
+              onClick={() => setActiveTab(tab)} 
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all ${activeTab === tab ? 'bg-blue-600 text-white shadow-lg shadow-blue-100 font-bold' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              {tab === TABS.DASHBOARD && <LayoutDashboard size={20} />}
+              {tab === TABS.ORDERS && <ShoppingCart size={20} />}
+              {tab === TABS.CATALOG && <Package size={20} />}
+              {tab === TABS.STOCK && <Database size={20} />}
+              {tab === TABS.SETTINGS && <Settings size={20} />}
+              {tab}
+            </button>
+          ))}
         </div>
-        
-        <div className="mt-auto pt-8 border-t border-slate-100 space-y-6">
-          {(!user || user.isAnonymous) ? (
-            <div className="space-y-4">
-              <button 
-                onClick={handleGoogleLogin}
-                className="w-full flex items-center justify-center gap-4 px-6 py-5 rounded-[2rem] bg-white border-2 border-slate-200 text-slate-800 font-black text-xs hover:border-purple-400 hover:bg-purple-50 transition-all shadow-md active:scale-95 group"
-              >
-                <div className="w-5 h-5 flex items-center justify-center overflow-hidden shrink-0">
-                  <svg viewBox="0 0 48 48" className="w-full h-full"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24s.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
-                </div>
-                ANTON, KLIK HIER OM IN TE LOGGEN
-                <ChevronRight size={16} className="ml-auto opacity-0 group-hover:opacity-100 transition-all"/>
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center gap-4 bg-purple-50 p-5 rounded-[2rem] border border-purple-100 shadow-sm">
-                <div className="w-12 h-12 rounded-full bg-white border-2 border-purple-200 shadow-inner flex items-center justify-center overflow-hidden shrink-0">
-                  {user.photoURL ? <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" /> : <User size={24} className="text-purple-600" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest leading-none mb-1.5">Eigenaar</p>
-                  <p className="text-xs font-black text-slate-800 truncate tracking-tight">{user.displayName || user.email}</p>
-                </div>
-              </div>
-              <button 
-                onClick={handleLogout}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-slate-50 text-slate-400 font-black text-[10px] hover:bg-rose-50 hover:text-rose-600 transition-all border-none"
-              >
-                <LogOut size={14} /> AFGEMELDEN
-              </button>
-            </div>
-          )}
 
-          <div className={`p-6 rounded-[2.5rem] border transition-all ${(!user || user.isAnonymous) ? 'bg-orange-50 border-orange-100 shadow-inner' : 'bg-emerald-50 border-emerald-100'}`}>
-            <div className="flex items-center justify-center gap-2.5 mb-2">
-              {(!user || user.isAnonymous) ? (
-                <>
-                  <Lock size={12} className="text-orange-500" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">Beperkte Sessie</span>
-                </>
-              ) : (
-                <>
-                  <ShieldCheck size={12} className="text-emerald-600" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Volledige Toegang</span>
-                </>
-              )}
+        <div className="mt-auto pt-6 border-t border-slate-100">
+          <div className="flex items-center gap-3 px-2 mb-4">
+            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+              <User size={16} />
             </div>
-            
-            {errorMessage && (
-              <div className="mt-3 p-4 bg-white/80 text-rose-600 rounded-2xl text-[10px] font-bold leading-relaxed flex items-start gap-3 border border-rose-100 shadow-sm">
-                <AlertTriangle size={14} className="shrink-0 mt-0.5 text-rose-500" />
-                <div className="flex-1">
-                  <span>{errorMessage}</span>
-                  {authErrorCode && (
-                    <div className="mt-1.5 pt-1.5 border-t border-rose-50 text-[8px] font-mono text-rose-300">
-                      Code: {authErrorCode}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            <div className="overflow-hidden">
+              <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Eigenaar</p>
+              <p className="text-[11px] font-bold text-slate-700 truncate">{user.email}</p>
+            </div>
           </div>
+          <button onClick={() => signOut(auth)} className="w-full flex items-center justify-center gap-2 p-3 text-slate-400 hover:text-red-500 font-black text-[10px] uppercase transition-colors">
+            <LogOut size={14} /> Afmelden
+          </button>
         </div>
       </nav>
 
-      <main className="flex-1 p-6 md:p-14 overflow-auto bg-[#FDFCFE]">
-        <header className="mb-12 flex justify-between items-start">
-          <div>
-            <h1 className="text-5xl font-black text-slate-900 tracking-tighter uppercase italic">{activeTab}</h1>
-            <div className="h-1.5 w-24 bg-purple-600 mt-4 rounded-full shadow-lg shadow-purple-100"></div>
-          </div>
-          {(!user || user.isAnonymous) && (
-            <div className="bg-white text-orange-600 px-5 py-3 rounded-[1.5rem] text-[10px] font-black uppercase flex items-center gap-2 border border-orange-100 shadow-sm">
-              <Info size={14}/> Preview Modus: Inloggen Vereist
-            </div>
-          )}
+      <main className="flex-1 p-6 md:p-12 overflow-auto bg-[#F8FAFC]">
+        <header className="mb-10">
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight italic uppercase">{activeTab}</h1>
         </header>
 
-        {(user && !user.isAnonymous) || orders.length > 0 ? (
-          <>
-            {activeTab === TABS.DASHBOARD && <Dashboard orders={orders} products={products} filaments={filaments} settings={settings} />}
-            {activeTab === TABS.ORDERS && <OrderList orders={orders} products={products} filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
-            {activeTab === TABS.CATALOG && <ProductList products={products} filaments={filaments} settings={settings} onAdd={addItem} onDelete={deleteItem} />}
-            {activeTab === TABS.STOCK && <StockList filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
-            {activeTab === TABS.SETTINGS && <SettingsPanel settings={settings} onSave={saveSettings} />}
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-[55vh] text-center max-w-xl mx-auto bg-white p-14 rounded-[4rem] border border-slate-100 shadow-2xl shadow-slate-100">
-            <div className="bg-purple-50 p-8 rounded-[3rem] mb-10 text-purple-600">
-               <ShieldCheck size={72} strokeWidth={1.5} />
-            </div>
-            <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tight mb-4">Welkom Anton</h2>
-            <p className="text-slate-500 font-medium leading-relaxed mb-10">
-              Deze database is exclusief beveiligd voor jouw account. Log in met <strong>antonmol.90@gmail.com</strong> om je Filamenten, Producten en Bestellingen te beheren.
-            </p>
-            <button 
-              onClick={handleGoogleLogin}
-              className="bg-slate-900 text-white px-12 py-6 rounded-[2rem] font-black text-sm shadow-2xl shadow-slate-200 hover:bg-purple-600 transition-all border-none flex items-center gap-3"
-            >
-              NU INLOGGEN MET GOOGLE <ChevronRight size={18}/>
-            </button>
-          </div>
-        )}
+        {activeTab === TABS.DASHBOARD && <Dashboard orders={orders} products={products} filaments={filaments} settings={settings} />}
+        {activeTab === TABS.ORDERS && <OrderList orders={orders} products={products} filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
+        {activeTab === TABS.CATALOG && <ProductList products={products} filaments={filaments} settings={settings} onAdd={addItem} onDelete={deleteItem} />}
+        {activeTab === TABS.STOCK && <StockList filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
+        {activeTab === TABS.SETTINGS && <SettingsPanel settings={settings} onSave={saveSettings} />}
       </main>
     </div>
   );
@@ -391,95 +263,79 @@ function Dashboard({ orders, products, filaments, settings }) {
 
       const prod = products.find(p => p.id === order.productId);
       if (prod) {
-        let materialCostForOne = 0;
-        const linkedFilaments = filaments.filter(f => prod.filamentIds?.includes(f.id));
-        
-        if (linkedFilaments.length > 0) {
-          const weightPerFilament = prod.weight / linkedFilaments.length;
-          linkedFilaments.forEach(f => {
-            materialCostForOne += (weightPerFilament / (f.totalWeight || 1000)) * f.price;
-          });
-        }
-        
+        const fil = filaments.find(f => f.id === prod.defaultFilamentId);
+        const filCost = fil ? (prod.weight / fil.totalWeight) * fil.price : 0;
         const energyCost = (prod.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice;
-        totalCost += (materialCostForOne + energyCost) * qty;
+        totalCost += (filCost + energyCost) * qty;
       }
     });
 
-    const criticalFilaments = filaments.filter(f => f.status === 'actief' && ((f.totalWeight - (f.usedWeight || 0)) / (f.totalWeight || 1)) < 0.15);
+    const criticalFilaments = filaments.filter(f => f.status === 'actief' && ((f.totalWeight - (f.usedWeight || 0)) / f.totalWeight) < 0.15);
 
-    return { openOrders, readyOrders, totalRevenue, totalProfit: totalRevenue - totalCost, activePrints: orders.filter(o => o.status === 'Printen').length, criticalFilaments };
+    return { 
+      openOrders, readyOrders, totalRevenue, totalProfit: totalRevenue - totalCost, 
+      activePrints: orders.filter(o => o.status === 'Printen').length, criticalFilaments 
+    };
   }, [orders, products, filaments, settings]);
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-10">
       {stats.criticalFilaments.length > 0 && (
-        <div className="bg-rose-50 border-2 border-rose-200 p-8 rounded-[3rem] flex items-center gap-8 shadow-2xl shadow-rose-100/50">
-          <div className="bg-rose-500 p-5 rounded-[2rem] text-white shadow-lg shadow-rose-200">
-            <AlertTriangle size={36} strokeWidth={2.5} />
+        <div className="bg-red-50 border-2 border-red-200 p-8 rounded-[2.5rem] flex items-center gap-8 shadow-lg shadow-red-100">
+          <div className="bg-red-500 p-4 rounded-2xl text-white">
+            <AlertTriangle size={32} />
           </div>
           <div>
-            <h2 className="text-2xl font-black text-rose-900 uppercase tracking-tight italic">Voorraad Alert!</h2>
-            <p className="text-rose-700 font-bold text-lg">Bijna op: {stats.criticalFilaments.map(f => `${f.brand} ${f.colorName}`).join(', ')}</p>
+            <h2 className="text-xl font-black text-red-900 uppercase tracking-tight">Kritieke Voorraad!</h2>
+            <p className="text-red-700 font-bold">Lage voorraad: {stats.criticalFilaments.map(f => `${f.brand} ${f.colorName}`).join(', ')}</p>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-8">
-        <StatCard title="Open Orders" value={stats.openOrders} icon={<Clock className="text-orange-500" />} color="bg-orange-50" />
-        <StatCard title="Nu Printen" value={stats.activePrints} icon={<Printer className="text-purple-500" />} color="bg-purple-50" />
-        <StatCard title="Klaar" value={stats.readyOrders} icon={<CheckCircle2 className="text-emerald-600" />} color="bg-emerald-50" />
-        <StatCard title="Omzet" value={`€${stats.totalRevenue.toFixed(2)}`} icon={<TrendingUp className="text-purple-500" />} color="bg-purple-50" />
-        <StatCard title="Winst" value={`€${stats.totalProfit.toFixed(2)}`} icon={<Euro className="text-indigo-600" />} color="bg-indigo-50" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <StatCard title="Open Orders" value={stats.openOrders} icon={<Clock className="text-orange-500" />} />
+        <StatCard title="Prints" value={stats.activePrints} icon={<Printer className="text-purple-500" />} />
+        <StatCard title="Klaar" value={stats.readyOrders} icon={<CheckCircle2 className="text-green-600" />} />
+        <StatCard title="Omzet" value={`€${stats.totalRevenue.toFixed(2)}`} icon={<TrendingUp className="text-blue-500" />} />
+        <StatCard title="Winst" value={`€${stats.totalProfit.toFixed(2)}`} icon={<Euro className="text-emerald-500" />} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-        <div className="bg-white p-12 rounded-[4rem] shadow-sm border border-slate-100">
-          <h2 className="text-2xl font-black mb-10 flex items-center gap-4 text-slate-800 uppercase tracking-tight italic">
-            <Clock size={28} className="text-purple-600" /> Recente Orders
-          </h2>
-          <div className="space-y-6">
-            {orders.length === 0 ? <p className="text-slate-400 italic text-center py-12">Geen orders gevonden.</p> : orders.slice(0, 5).map(order => (
-              <div key={order.id} className="flex justify-between items-center p-6 bg-slate-50 rounded-[2.5rem] border border-transparent hover:border-purple-100 transition-all">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+        <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
+          <h2 className="text-xl font-black mb-8 flex items-center gap-3 uppercase"><Clock size={20} className="text-blue-600" /> Recente Orders</h2>
+          <div className="space-y-4">
+            {orders.slice(0, 5).map(order => (
+              <div key={order.id} className="flex justify-between items-center p-5 bg-slate-50 rounded-2xl">
                 <div>
-                  <p className="font-black text-slate-900 text-xl leading-tight">{order.customer}</p>
-                  <p className="text-xs text-slate-400 font-black uppercase tracking-widest mt-2">
-                    {order.quantity}x {products.find(p => p.id === order.productId)?.name || 'Onbekend'}
-                  </p>
+                  <p className="font-bold text-slate-900">{order.customer}</p>
+                  <p className="text-xs text-slate-400 font-black uppercase tracking-widest">{order.quantity}x {products.find(p => p.id === order.productId)?.name}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-black text-purple-600 text-2xl tracking-tighter">€{(Number(order.price) * (order.quantity || 1)).toFixed(2)}</p>
-                  <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full mt-2 inline-block ${order.status === 'Gereed' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
-                    {order.status}
-                  </span>
+                  <p className="font-black text-blue-600">€{(Number(order.price) * (order.quantity || 1)).toFixed(2)}</p>
+                  <p className="text-[10px] font-black uppercase text-slate-300">{order.status}</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-white p-12 rounded-[4rem] shadow-sm border border-slate-100">
-          <h2 className="text-2xl font-black mb-10 flex items-center gap-4 text-slate-800 uppercase tracking-tight italic">
-            <Database size={28} className="text-purple-600" /> Filament Status
-          </h2>
-          <div className="space-y-10">
+        <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
+          <h2 className="text-xl font-black mb-8 flex items-center gap-3 uppercase"><Database size={20} className="text-blue-600" /> Filament Status</h2>
+          <div className="space-y-8">
             {filaments.filter(f => f.status === 'actief').map(fil => {
               const rem = fil.totalWeight - (fil.usedWeight || 0);
-              const perc = (rem / (fil.totalWeight || 1)) * 100;
+              const perc = (rem / fil.totalWeight) * 100;
               return (
-                <div key={fil.id} className="space-y-4">
-                  <div className="flex justify-between items-end px-2">
+                <div key={fil.id} className="space-y-2">
+                  <div className="flex justify-between items-end">
                     <div>
-                      <div className="flex items-center gap-3">
-                         <p className="font-black text-slate-800 text-lg leading-none">{fil.brand}</p>
-                         <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-lg font-black uppercase tracking-widest">{fil.materialType || 'PLA'}</span>
-                      </div>
-                      <p className="text-xs text-slate-400 font-bold mt-2 uppercase tracking-widest">{fil.colorName}</p>
+                      <p className="font-black text-slate-800 text-sm leading-none">{fil.brand}</p>
+                      <p className="text-[10px] text-slate-400 font-black uppercase mt-1">{fil.colorName}</p>
                     </div>
-                    <p className={`text-base font-black ${perc < 15 ? 'text-rose-500 animate-pulse' : 'text-slate-600'}`}>{Math.round(rem)}g ({Math.round(perc)}%)</p>
+                    <p className={`text-sm font-black ${perc < 15 ? 'text-red-500' : 'text-slate-500'}`}>{Math.round(rem)}g</p>
                   </div>
-                  <div className="w-full bg-slate-100 h-5 rounded-full overflow-hidden border border-slate-200 p-1.5 shadow-inner">
-                    <div className={`h-full transition-all duration-1000 rounded-full ${perc < 15 ? 'bg-rose-500 shadow-lg shadow-rose-200' : 'bg-purple-600 shadow-lg shadow-purple-100'}`} style={{ width: `${Math.max(0, perc)}%` }}></div>
+                  <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-100">
+                    <div className={`h-full transition-all duration-1000 ${perc < 15 ? 'bg-red-500 animate-pulse' : 'bg-blue-600'}`} style={{ width: `${Math.max(0, perc)}%` }}></div>
                   </div>
                 </div>
               );
@@ -491,13 +347,13 @@ function Dashboard({ orders, products, filaments, settings }) {
   );
 }
 
-function StatCard({ title, value, icon, color }) {
+function StatCard({ title, value, icon }) {
   return (
-    <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100 flex flex-col items-center text-center gap-6 hover:shadow-2xl hover:shadow-purple-100/30 transition-all duration-500 group">
-      <div className={`p-5 ${color} rounded-[2rem] transition-transform group-hover:scale-110 shadow-sm`}>{icon}</div>
+    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col items-center text-center gap-4 hover:shadow-lg transition-all">
+      <div className="p-4 bg-slate-50 rounded-2xl">{icon}</div>
       <div>
-        <p className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em] mb-2">{title}</p>
-        <p className="text-3xl font-black text-slate-900 leading-none tracking-tighter italic">{value}</p>
+        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">{title}</p>
+        <p className="text-2xl font-black text-slate-900 leading-none">{value}</p>
       </div>
     </div>
   );
@@ -507,76 +363,74 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ 
     customer: '', messengerLink: '', productId: '', price: '', quantity: 1, 
-    status: 'In de wacht', comments: '', orderDate: new Date().toISOString().split('T')[0]
+    status: 'In de wacht', comments: ''
   });
+
+  useEffect(() => {
+    if (formData.productId) {
+      const p = products.find(p => p.id === formData.productId);
+      if (p) setFormData(prev => ({ ...prev, price: p.suggestedPrice || '' }));
+    }
+  }, [formData.productId, products]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onAdd('orders', { ...formData, price: Number(formData.price), quantity: Number(formData.quantity) });
     setShowModal(false);
-    setFormData({ customer: '', messengerLink: '', productId: '', price: '', quantity: 1, status: 'In de wacht', comments: '', orderDate: new Date().toISOString().split('T')[0] });
+    setFormData({ customer: '', messengerLink: '', productId: '', price: '', quantity: 1, status: 'In de wacht', comments: '' });
   };
 
   return (
-    <div className="space-y-10">
-      <button onClick={() => setShowModal(true)} className="bg-purple-600 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-none outline-none italic tracking-tight" style={{ backgroundColor: '#9333ea' }}>
-        <Plus size={28} strokeWidth={4} /> BESTELLING INVOEREN
+    <div className="space-y-8">
+      <button onClick={() => setShowModal(true)} className="bg-blue-600 text-white px-10 py-5 rounded-[2rem] flex items-center gap-4 font-black shadow-xl shadow-blue-100 transition-all active:scale-95">
+        <Plus size={24} strokeWidth={3} /> BESTELLING INVOEREN
       </button>
 
-      <div className="bg-white rounded-[4rem] shadow-sm border border-slate-100 overflow-hidden overflow-x-auto">
-        <table className="w-full text-left min-w-[1000px]">
-          <thead className="bg-slate-50/50 text-slate-400 text-[11px] uppercase font-black tracking-[0.3em]">
+      <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden overflow-x-auto">
+        <table className="w-full text-left min-w-[800px]">
+          <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-[0.2em]">
             <tr>
-              <th className="px-10 py-10">Klant & Datum</th>
-              <th className="px-10 py-10">Product Info</th>
-              <th className="px-10 py-10">Financieel</th>
-              <th className="px-10 py-10">Status</th>
-              <th className="px-10 py-10 text-right">Beheer</th>
+              <th className="px-10 py-8">Klant</th>
+              <th className="px-10 py-8">Product</th>
+              <th className="px-10 py-8">Totaal</th>
+              <th className="px-10 py-8">Status</th>
+              <th className="px-10 py-8 text-right">Beheer</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-bold">
-            {[...orders].sort((a,b) => new Date(b.orderDate || b.createdAt) - new Date(a.orderDate || a.createdAt)).map(order => {
+            {[...orders].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(order => {
               const p = products.find(p => p.id === order.productId);
               return (
-                <tr key={order.id} className="hover:bg-slate-50/30 transition-colors group">
-                  <td className="px-10 py-10">
-                    <div className="flex items-center gap-3 text-slate-400 mb-2">
-                       <Calendar size={14}/>
-                       <span className="text-[10px] uppercase font-black tracking-widest">{order.orderDate || 'N/A'}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <p className="text-slate-900 text-2xl font-black italic tracking-tight">{order.customer}</p>
+                <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-10 py-8">
+                    <div className="flex items-center gap-2">
+                      <p className="text-slate-900 text-xl font-black italic tracking-tight">{order.customer}</p>
                       {order.messengerLink && (
-                        <a href={order.messengerLink} target="_blank" rel="noreferrer" className="text-purple-500 hover:text-purple-700 bg-purple-50 p-2 rounded-xl">
-                          <ExternalLink size={18} strokeWidth={2.5}/>
+                        <a href={order.messengerLink} target="_blank" rel="noreferrer" className="text-blue-500">
+                          <ExternalLink size={16}/>
                         </a>
                       )}
                     </div>
-                    {order.comments && <p className="text-xs text-slate-400 font-medium mt-2 italic">"{order.comments}"</p>}
+                    {order.comments && <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 italic tracking-widest leading-relaxed">{order.comments}</p>}
                   </td>
-                  <td className="px-10 py-10">
-                    <p className="text-slate-800 text-xl font-black">{p?.name || 'Onbekend'}</p>
-                    <p className="text-xs text-slate-400 font-black uppercase tracking-[0.2em] mt-1">{order.quantity} Stuks</p>
+                  <td className="px-10 py-8">
+                    <p className="text-slate-800">{p?.name || 'Onbekend'}</p>
+                    <p className="text-xs text-slate-400 font-black uppercase tracking-widest">{order.quantity}x</p>
                   </td>
-                  <td className="px-10 py-10">
-                    <p className="text-slate-900 text-2xl font-black tracking-tighter">€{(Number(order.price) * (order.quantity || 1)).toFixed(2)}</p>
-                    <p className="text-[10px] text-slate-400 uppercase font-black mt-1">€{Number(order.price).toFixed(2)} p/s</p>
+                  <td className="px-10 py-8">
+                    <p className="text-slate-900 text-xl font-black">€{(Number(order.price) * (order.quantity || 1)).toFixed(2)}</p>
                   </td>
-                  <td className="px-10 py-10">
+                  <td className="px-10 py-8">
                     <select 
                       value={order.status} 
                       onChange={(e) => onUpdate('orders', order.id, { status: e.target.value })} 
-                      className={`border-2 rounded-[1.5rem] px-6 py-3 text-[11px] uppercase font-black cursor-pointer outline-none transition-all ${
-                        order.status === 'Afgerond' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 
-                        order.status === 'Gereed' ? 'bg-purple-50 border-purple-100 text-purple-700' : 
-                        'bg-white border-slate-100 focus:border-purple-300 shadow-sm'
-                      }`}
+                      className="border-2 rounded-full px-5 py-2.5 text-[10px] uppercase font-black cursor-pointer bg-white border-slate-100 focus:border-blue-300 outline-none transition-all"
                     >
                       {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </td>
-                  <td className="px-10 py-10 text-right">
-                    <button onClick={() => onDelete('orders', order.id)} className="text-slate-200 hover:text-rose-500 p-4 bg-slate-50/50 rounded-3xl transition-all border-none"><Trash2 size={24} strokeWidth={2.5}/></button>
+                  <td className="px-10 py-8 text-right">
+                    <button onClick={() => onDelete('orders', order.id)} className="text-slate-200 hover:text-red-500 p-2"><Trash2 size={24}/></button>
                   </td>
                 </tr>
               );
@@ -586,46 +440,44 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-2xl flex items-center justify-center p-6 z-50">
-          <div className="bg-white rounded-[4rem] p-12 w-full max-w-2xl shadow-2xl overflow-y-auto max-h-[90vh] border border-slate-100">
-            <h2 className="text-4xl font-black mb-12 text-slate-900 uppercase italic tracking-tighter">Nieuwe Bestelling</h2>
-            <form onSubmit={handleSubmit} className="space-y-8">
-              <div className="space-y-3">
-                <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Besteldatum</label>
-                <input required type="date" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl" value={formData.orderDate} onChange={e => setFormData({...formData, orderDate: e.target.value})} />
-              </div>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xl flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-2xl shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 className="text-4xl font-black mb-10 text-slate-900 uppercase italic tracking-tighter">Nieuwe Order</h2>
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-3">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Klant</label>
-                  <input required placeholder="Naam klant..." className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner" value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} />
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Klant</label>
+                  <input required placeholder="Naam..." className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold text-lg" value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} />
                 </div>
-                <div className="space-y-3">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Product</label>
-                  <select required className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner appearance-none" value={formData.productId} onChange={e => {
-                    const pId = e.target.value;
-                    const p = products.find(prod => prod.id === pId);
-                    setFormData({...formData, productId: pId, price: p?.suggestedPrice || ''});
-                  }}>
-                    <option value="">Kies product...</option>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Product</label>
+                  <select required className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold text-lg appearance-none" value={formData.productId} onChange={e => setFormData({...formData, productId: e.target.value})}>
+                    <option value="">Selecteer...</option>
                     {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
               </div>
-              <input placeholder="Messenger Link (optioneel)" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold shadow-inner" value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
-              <div className="grid grid-cols-2 gap-8">
-                <div className="space-y-3 text-center">
-                  <label className="text-[11px] font-black uppercase text-slate-400 tracking-widest">Aantal</label>
-                  <input required type="number" min="1" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-black text-3xl text-center shadow-inner" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} />
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Messenger Chat Link</label>
+                <input placeholder="https://..." className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold" value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
+              </div>
+              <div className="grid grid-cols-2 gap-8 text-center">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400">Aantal</label>
+                  <input required type="number" min="1" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-black text-3xl text-center" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} />
                 </div>
-                <div className="space-y-3 text-center">
-                  <label className="text-[11px] font-black uppercase text-slate-400 tracking-widest">Prijs (€)</label>
-                  <input required type="number" step="0.01" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-black text-3xl text-center shadow-inner" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400">Prijs p/s (€)</label>
+                  <input required type="number" step="0.01" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-black text-3xl text-center" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
                 </div>
               </div>
-              <textarea rows="3" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-slate-700 shadow-inner" placeholder="Extra opmerkingen..." value={formData.comments} onChange={e => setFormData({...formData, comments: e.target.value})} />
-              <div className="flex gap-8 pt-8">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-[0.2em] text-xs">Annuleren</button>
-                <button type="submit" className="flex-1 py-7 bg-purple-600 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-none italic" style={{ backgroundColor: '#9333ea' }}>OPSLAAN</button>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Extra Opmerkingen</label>
+                <textarea rows="3" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-medium" placeholder="Bijv. kleurwissel halverwege..." value={formData.comments} onChange={e => setFormData({...formData, comments: e.target.value})} />
+              </div>
+              <div className="flex gap-6 pt-6">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-5 text-slate-400 font-black uppercase tracking-widest">Annuleren</button>
+                <button type="submit" className="flex-1 py-6 bg-blue-600 text-white rounded-[2rem] font-black text-2xl shadow-xl shadow-blue-100 transition-all active:scale-95 italic">OPSLAAN</button>
               </div>
             </form>
           </div>
@@ -637,134 +489,86 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
 
 function ProductList({ products, filaments, settings, onAdd, onDelete }) {
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({ name: '', weight: '', printTime: '', filamentIds: [], suggestedPrice: '' });
+  const [formData, setFormData] = useState({ name: '', weight: '', printTime: '', defaultFilamentId: '', suggestedPrice: '' });
 
   const calculateCosts = (p) => {
-    let materialCost = 0;
-    const linkedFilaments = filaments.filter(f => p.filamentIds?.includes(f.id));
-    if (linkedFilaments.length > 0) {
-      const weightPerFil = p.weight / linkedFilaments.length;
-      linkedFilaments.forEach(f => {
-        materialCost += (weightPerFil / (f.totalWeight || 1000)) * f.price;
-      });
-    }
+    const fil = filaments.find(f => f.id === p.defaultFilamentId);
+    const filCost = fil ? (p.weight / fil.totalWeight) * fil.price : 0;
     const energyCost = (p.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice;
-    return { fil: materialCost, energy: energyCost, total: materialCost + energyCost };
+    return { fil: filCost, energy: energyCost, total: filCost + energyCost };
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onAdd('products', { ...formData, weight: Number(formData.weight), printTime: Number(formData.printTime), suggestedPrice: Number(formData.suggestedPrice) });
     setShowModal(false);
-    setFormData({ name: '', weight: '', printTime: '', filamentIds: [], suggestedPrice: '' });
-  };
-
-  const toggleFilament = (id) => {
-    setFormData(prev => ({
-      ...prev,
-      filamentIds: prev.filamentIds.includes(id) 
-        ? prev.filamentIds.filter(fid => fid !== id)
-        : [...prev.filamentIds, id]
-    }));
+    setFormData({ name: '', weight: '', printTime: '', defaultFilamentId: '', suggestedPrice: '' });
   };
 
   return (
     <div className="space-y-12">
-      <button onClick={() => setShowModal(true)} className="bg-purple-600 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] transition-all border-none outline-none italic tracking-tight" style={{ backgroundColor: '#9333ea' }}>
-        <Plus size={28} strokeWidth={4} /> NIEUW PRODUCT
+      <button onClick={() => setShowModal(true)} className="bg-blue-600 text-white px-10 py-5 rounded-[2rem] flex items-center gap-4 font-black shadow-lg shadow-blue-100">
+        <Plus size={24} strokeWidth={3} /> NIEUW PRODUCT
       </button>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
         {products.map(product => {
           const costs = calculateCosts(product);
           return (
-            <div key={product.id} className="bg-white p-12 rounded-[4rem] shadow-sm border border-slate-100 group relative transition-all hover:shadow-2xl hover:-translate-y-2">
-              <h3 className="text-3xl font-black mb-3 text-slate-900 italic tracking-tighter">{product.name}</h3>
-              <div className="flex gap-6 mb-8 text-[11px] font-black uppercase text-slate-400 tracking-[0.25em]">
-                <span>{product.weight}g</span>
-                <span>{product.printTime}m</span>
-              </div>
-              
-              <div className="flex flex-wrap gap-3 mb-10">
-                {product.filamentIds?.map(fid => {
-                  const f = filaments.find(fil => fil.id === fid);
-                  return f ? (
-                    <div key={fid} className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 shadow-sm">
-                      <div className="w-3.5 h-3.5 rounded-full shadow-inner" style={{ backgroundColor: f.colorCode }}></div>
-                      <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{f.brand}</span>
-                    </div>
-                  ) : null;
-                })}
+            <div key={product.id} className="bg-white p-12 rounded-[4rem] shadow-sm border border-slate-100 group relative transition-all hover:shadow-2xl">
+              <h3 className="text-3xl font-black mb-4 text-slate-900 tracking-tight italic">{product.name}</h3>
+              <div className="flex gap-6 mb-10 text-[10px] font-black uppercase text-slate-400 tracking-[0.25em]">
+                <span className="flex items-center gap-2"><Package size={16}/> {product.weight}g</span>
+                <span className="flex items-center gap-2"><Clock size={16}/> {product.printTime} min</span>
               </div>
 
               <div className="grid grid-cols-2 gap-6 mb-6">
                 <div className="bg-slate-50 p-6 rounded-[2.5rem] text-center shadow-inner">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Kost</p>
-                  <p className="text-2xl font-black tracking-tighter text-slate-800">€{costs.total.toFixed(2)}</p>
+                  <p className="text-2xl font-black text-slate-800 tracking-tighter">€{costs.total.toFixed(2)}</p>
                 </div>
-                <div className="bg-purple-50 p-6 rounded-[2.5rem] text-center shadow-inner">
-                  <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-1">Verkoop</p>
-                  <p className="text-2xl font-black text-purple-600 tracking-tighter">€{(product.suggestedPrice || 0).toFixed(2)}</p>
+                <div className="bg-blue-50 p-6 rounded-[2.5rem] text-center shadow-inner">
+                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Verkoop</p>
+                  <p className="text-2xl font-black text-blue-600 tracking-tighter">€{(product.suggestedPrice || 0).toFixed(2)}</p>
                 </div>
               </div>
-              <button onClick={() => onDelete('products', product.id)} className="absolute top-10 right-10 text-slate-100 hover:text-rose-500 p-3 border-none transition-colors"><Trash2 size={24}/></button>
+
+              <button onClick={() => onDelete('products', product.id)} className="absolute top-10 right-10 text-slate-100 hover:text-red-500 transition-colors p-2"><Trash2 size={24}/></button>
             </div>
           );
         })}
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-2xl flex items-center justify-center p-6 z-50">
-          <div className="bg-white rounded-[4rem] p-12 w-full max-xl shadow-2xl overflow-y-auto max-h-[90vh] border border-slate-100">
-            <h2 className="text-4xl font-black mb-12 tracking-tighter uppercase text-slate-900 italic">Catalogus Item</h2>
-            <form onSubmit={handleSubmit} className="space-y-8">
-              <div className="space-y-3">
-                 <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Naam Product</label>
-                 <input required placeholder="Bijv. Flexi-Rex..." className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-              </div>
-              <div className="grid grid-cols-2 gap-8">
-                <div className="space-y-3">
-                   <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Gewicht (g)</label>
-                   <input required type="number" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xl flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 className="text-4xl font-black mb-10 text-slate-900 uppercase italic tracking-tighter">Item Toevoegen</h2>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <input required placeholder="Naam Item..." className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+              <div className="grid grid-cols-2 gap-8 text-center">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400">Gewicht (g)</label>
+                  <input required type="number" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2.5rem] outline-none font-black text-3xl text-center shadow-inner" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} />
                 </div>
-                <div className="space-y-3">
-                   <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Tijd (min)</label>
-                   <input required type="number" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner" value={formData.printTime} onChange={e => setFormData({...formData, printTime: e.target.value})} />
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400">Tijd (min)</label>
+                  <input required type="number" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2.5rem] outline-none font-black text-3xl text-center shadow-inner" value={formData.printTime} onChange={e => setFormData({...formData, printTime: e.target.value})} />
                 </div>
               </div>
-              
-              <div className="space-y-4">
-                <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Filamenten</label>
-                <div className="grid grid-cols-2 gap-4 max-h-48 overflow-y-auto p-4 bg-slate-50 rounded-[2rem] shadow-inner">
-                  {filaments.filter(f => f.status === 'actief').map(f => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => toggleFilament(f.id)}
-                      className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all text-left ${
-                        formData.filamentIds.includes(f.id) 
-                          ? 'border-purple-500 bg-purple-50' 
-                          : 'border-transparent bg-white shadow-sm'
-                      }`}
-                    >
-                      <div className="w-5 h-5 rounded-full shadow-inner border border-slate-100" style={{ backgroundColor: f.colorCode }}></div>
-                      <div className="flex-1 truncate">
-                        <p className="text-[10px] font-black uppercase leading-none tracking-tight">{f.brand}</p>
-                        <p className="text-[9px] text-slate-400 font-bold truncate mt-1">{f.colorName}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest">Type Filament</label>
+                <select className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2.5rem] outline-none font-bold text-lg appearance-none shadow-inner" value={formData.defaultFilamentId} onChange={e => setFormData({...formData, defaultFilamentId: e.target.value})}>
+                  <option value="">Kies...</option>
+                  {filaments.filter(f => f.status === 'actief').map(f => <option key={f.id} value={f.id}>{f.brand} {f.colorName}</option>)}
+                </select>
               </div>
-
-              <div className="space-y-3">
-                <label className="text-[11px] font-black uppercase text-slate-400 text-center block tracking-widest">Aanbevolen Verkoopprijs (€)</label>
-                <input required type="number" step="0.01" className="w-full p-7 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2.5rem] outline-none font-black text-4xl text-center shadow-inner" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} />
+              <div className="space-y-1 text-center">
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Aanbevolen Verkoopprijs (€)</label>
+                <input required type="number" step="0.01" className="w-full p-8 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[3rem] outline-none font-black text-5xl text-center shadow-inner tracking-tighter" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} />
               </div>
-              
               <div className="flex gap-8 pt-8">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest text-xs">Annuleren</button>
-                <button type="submit" className="flex-1 py-7 bg-purple-600 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-none italic" style={{ backgroundColor: '#9333ea' }}>OPSLAAN</button>
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest">Annuleren</button>
+                <button type="submit" className="flex-1 py-8 bg-blue-600 text-white rounded-[3rem] font-black text-2xl shadow-2xl shadow-blue-100 italic transition-all active:scale-95 border-none">OPSLAAN</button>
               </div>
             </form>
           </div>
@@ -776,118 +580,80 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
 
 function StockList({ filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState('add'); 
-  const [editingId, setEditingId] = useState(null);
-  const [formData, setFormData] = useState({ 
-    brand: '', materialType: '', colorName: '', colorCode: '#9333ea', totalWeight: 1000, 
-    price: '', totalPrice: '', quantity: 1, 
-    purchaseDate: new Date().toISOString().split('T')[0], shopName: ''
-  });
+  const [formData, setFormData] = useState({ brand: '', colorName: '', colorCode: '#3b82f6', totalWeight: 1000, price: '' });
   const [showArchived, setShowArchived] = useState(false);
-
-  const handlePriceChange = (field, value) => {
-    const val = Number(value);
-    if (field === 'price') {
-      setFormData(prev => ({ ...prev, price: val, totalPrice: Number((val * prev.quantity).toFixed(2)) }));
-    } else if (field === 'totalPrice') {
-      setFormData(prev => ({ ...prev, totalPrice: val, price: Number((val / prev.quantity).toFixed(2)) }));
-    } else if (field === 'quantity') {
-      const q = Number(value);
-      setFormData(prev => ({ ...prev, quantity: q, totalPrice: Number((prev.price * q).toFixed(2)) }));
-    }
-  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (modalMode === 'edit') {
-      onUpdate('filaments', editingId, { 
-        brand: formData.brand, materialType: formData.materialType, colorName: formData.colorName,
-        colorCode: formData.colorCode, totalWeight: Number(formData.totalWeight),
-        price: Number(formData.price), purchaseDate: formData.purchaseDate, shopName: formData.shopName
-      });
-    } else {
-      onAdd('filaments', { ...formData, usedWeight: 0, price: Number(formData.price), totalWeight: Number(formData.totalWeight), status: 'actief' });
-    }
+    onAdd('filaments', { ...formData, usedWeight: 0, price: Number(formData.price), status: 'actief' });
     setShowModal(false);
-  };
-
-  const openModal = (mode, item = null) => {
-    setModalMode(mode);
-    if (item) {
-      setEditingId(item.id);
-      setFormData({
-        brand: item.brand, materialType: item.materialType, colorName: item.colorName, colorCode: item.colorCode,
-        totalWeight: item.totalWeight, price: item.price, totalPrice: item.price, quantity: 1,
-        purchaseDate: item.purchaseDate || new Date().toISOString().split('T')[0], shopName: item.shopName || ''
-      });
-    } else {
-      setFormData({ brand: '', materialType: '', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', totalPrice: '', quantity: 1, purchaseDate: new Date().toISOString().split('T')[0], shopName: '' });
-    }
-    setShowModal(true);
+    setFormData({ brand: '', colorName: '', colorCode: '#3b82f6', totalWeight: 1000, price: '' });
   };
 
   const activeFilaments = filaments.filter(f => (showArchived ? f.status === 'leeg' : f.status === 'actief'));
 
   return (
     <div className="space-y-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-        <button onClick={() => openModal('add')} className="bg-purple-600 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] transition-all border-none outline-none italic" style={{ backgroundColor: '#9333ea' }}>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <button onClick={() => setShowModal(true)} className="bg-blue-600 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-blue-100 active:scale-95 transition-all italic">
           <Plus size={28} strokeWidth={4} /> NIEUWE ROL
         </button>
-        <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-4 px-10 py-5 bg-white border-2 border-slate-100 rounded-[2.5rem] font-black text-xs uppercase tracking-widest text-slate-400 transition-all hover:border-purple-200 hover:text-purple-600 outline-none shadow-sm">
-          {showArchived ? 'Actieve Rollen' : 'Archief (Leeg)'}
+        <button 
+          onClick={() => setShowArchived(!showArchived)} 
+          className="flex items-center gap-4 px-10 py-5 bg-white border-2 border-slate-100 rounded-[2.5rem] font-black text-xs uppercase tracking-widest text-slate-400 hover:border-blue-200 transition-all shadow-sm"
+        >
+          {showArchived ? 'Actieve Rollen' : 'Lege Rollen'}
         </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
         {activeFilaments.map(fil => {
           const rem = fil.totalWeight - (fil.usedWeight || 0);
-          const perc = (rem / (fil.totalWeight || 1)) * 100;
+          const perc = (rem / fil.totalWeight) * 100;
           const isLow = perc < 15 && fil.status === 'actief';
 
           return (
-            <div key={fil.id} className={`bg-white p-12 rounded-[4rem] border-2 transition-all relative group shadow-sm hover:shadow-2xl ${isLow ? 'border-rose-200 shadow-rose-50' : 'border-slate-50'}`}>
+            <div key={fil.id} className={`bg-white p-12 rounded-[4rem] border-2 transition-all relative group shadow-sm hover:shadow-2xl ${isLow ? 'border-red-200 shadow-red-50' : 'border-slate-50'}`}>
               <div className="flex justify-between items-start mb-10">
                 <div className="min-w-0 flex-1 pr-4">
-                  <div className="flex items-center gap-3 mb-2">
-                     <h3 className="text-2xl font-black text-slate-900 leading-tight italic truncate">{fil.brand}</h3>
-                     <span className="shrink-0 text-[10px] bg-purple-50 text-purple-600 px-2 py-1 rounded-xl font-black uppercase tracking-widest">{fil.materialType || 'PLA'}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs font-black uppercase text-slate-400 tracking-widest mb-4">
+                  <h3 className="text-2xl font-black text-slate-900 italic tracking-tighter truncate">{fil.brand}</h3>
+                  <div className="flex items-center gap-3 text-xs font-black uppercase text-slate-400 tracking-widest mt-2">
                     <div className="w-5 h-5 rounded-full border border-slate-100 shadow-sm" style={{ backgroundColor: fil.colorCode }}></div>
                     {fil.colorName} • €{fil.price?.toFixed(2)}
                   </div>
-                  <div className="flex flex-wrap gap-4 text-[9px] font-black text-slate-300 uppercase tracking-widest">
-                     <span className="flex items-center gap-1.5"><Calendar size={14} className="text-purple-300"/> {fil.purchaseDate || 'N/A'}</span>
-                     {fil.shopName && <span className="flex items-center gap-1.5"><Store size={14} className="text-purple-300"/> {fil.shopName}</span>}
-                  </div>
                 </div>
-                <div className="flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openModal('edit', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-none transition-colors"><Edit3 size={20}/></button>
-                  <button onClick={() => openModal('copy', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-none transition-colors"><Copy size={20}/></button>
-                  <button onClick={() => onDelete('filaments', fil.id)} className="text-slate-300 hover:text-rose-500 p-2 border-none transition-colors"><Trash2 size={20}/></button>
-                  {fil.status === 'actief' ? (
-                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'leeg' })} className="text-slate-300 hover:text-purple-500 p-2 border-none transition-colors"><Archive size={20}/></button>
-                  ) : (
-                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'actief' })} className="text-slate-300 hover:text-emerald-500 p-2 border-none transition-colors"><RefreshCw size={20}/></button>
+                <div className="flex flex-col gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => onDelete('filaments', fil.id)} className="text-slate-200 hover:text-red-500 transition-colors p-2"><Trash2 size={24}/></button>
+                  {fil.status === 'actief' && (
+                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'leeg' })} className="text-slate-200 hover:text-blue-500 transition-colors p-2" title="Markeer leeg"><Archive size={24}/></button>
                   )}
                 </div>
               </div>
               
               <div className="space-y-4 mb-10">
                 <div className="flex justify-between items-end px-2">
-                   <p className={`text-[11px] font-black uppercase tracking-widest ${isLow ? 'text-rose-500' : 'text-slate-400'}`}>Resterend</p>
+                   <p className={`text-[11px] font-black uppercase tracking-widest ${isLow ? 'text-red-500' : 'text-slate-400'}`}>Resterend</p>
                    <p className="text-lg font-black tracking-tighter italic">{Math.round(rem)}g / {fil.totalWeight}g</p>
                 </div>
                 <div className="w-full bg-slate-100 h-6 rounded-full overflow-hidden border border-slate-200 p-1.5 shadow-inner">
-                  <div className={`h-full transition-all duration-1000 rounded-full ${isLow ? 'bg-rose-500 animate-pulse' : 'bg-purple-600 shadow-lg shadow-purple-200'}`} style={{ width: `${Math.max(0, perc)}%` }}></div>
+                  <div className={`h-full transition-all duration-1000 rounded-full ${isLow ? 'bg-red-500 animate-pulse shadow-lg shadow-red-200' : 'bg-blue-600 shadow-lg shadow-blue-200'}`} style={{ width: `${Math.max(0, perc)}%` }}></div>
                 </div>
               </div>
 
               {fil.status === 'actief' && (
-                <div className="bg-slate-50 p-6 rounded-[2.5rem] flex items-center gap-5 border-2 border-transparent focus-within:border-purple-200 transition-all shadow-inner group-focus-within:shadow-none">
-                   <Hash size={24} className="text-purple-500 shrink-0" />
-                   <input type="number" placeholder="Verbruik invoeren..." className="w-full bg-transparent outline-none font-black text-slate-800 text-base border-none shadow-none focus:ring-0" onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value) { onUpdate('filaments', fil.id, { usedWeight: (fil.usedWeight || 0) + Number(e.target.value) }); e.target.value = ''; } }} />
+                <div className="bg-slate-50 p-6 rounded-[2.5rem] flex items-center gap-5 border-2 border-transparent focus-within:border-blue-200 transition-all shadow-inner group-focus-within:shadow-none">
+                   <Hash size={24} className="text-blue-500 shrink-0" />
+                   <input 
+                      type="number" 
+                      placeholder="Verbruik (g)..."
+                      className="w-full bg-transparent outline-none font-black text-slate-800 text-base"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.target.value) {
+                          onUpdate('filaments', fil.id, { usedWeight: (fil.usedWeight || 0) + Number(e.target.value) });
+                          e.target.value = '';
+                        }
+                      }}
+                    />
                 </div>
               )}
             </div>
@@ -896,71 +662,27 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-2xl flex items-center justify-center p-6 z-50">
-          <div className="bg-white rounded-[4rem] p-12 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh] border border-slate-100">
-            <h2 className="text-4xl font-black mb-12 tracking-tighter uppercase text-slate-900 italic">Voorraad Invoer</h2>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Merk</label>
-                  <input required placeholder="Bijv. eSun" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xl flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 className="text-4xl font-black mb-10 text-slate-900 uppercase italic tracking-tighter">Voorraad Invoer</h2>
+            <form onSubmit={handleSubmit} className="space-y-8">
+              <input required placeholder="Merk (bijv. Prusament)..." className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} />
+              <input required placeholder="Kleur Naam..." className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner uppercase" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} />
+              
+              <div className="grid grid-cols-2 gap-8 text-center">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400">Prijs (€)</label>
+                  <input required type="number" step="0.01" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2.5rem] outline-none font-black text-3xl text-center shadow-inner" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Materiaal</label>
-                  <input required placeholder="Bijv. PLA+" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner uppercase" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} />
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest leading-none">Visuele Kleur</label>
+                  <input required type="color" className="w-full h-[76px] p-2 bg-slate-50 rounded-[2.5rem] cursor-pointer shadow-inner" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} />
                 </div>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Kleur Naam</label>
-                  <input required placeholder="Bijv. Cold White" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Start Gewicht (g)</label>
-                  <input required type="number" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Besteldatum</label>
-                  <input required type="date" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner" value={formData.purchaseDate} onChange={e => setFormData({...formData, purchaseDate: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Webshop</label>
-                  <input placeholder="Bijv. 123inkt" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-xl shadow-inner uppercase" value={formData.shopName} onChange={e => setFormData({...formData, shopName: e.target.value})} />
-                </div>
-              </div>
-
-              {modalMode !== 'edit' && (
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Aantal rollen (Bulk)</label>
-                  <input required type="number" min="1" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-black text-3xl text-center shadow-inner" value={formData.quantity} onChange={e => handlePriceChange('quantity', e.target.value)} />
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-8 border-t border-slate-100 pt-8">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 text-center block tracking-widest">Prijs p/s (€)</label>
-                  <input required type="number" step="0.01" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-black text-3xl text-center shadow-inner" value={formData.price} onChange={e => handlePriceChange('price', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 text-center block tracking-widest">Totaal (€)</label>
-                  <input required type="number" step="0.01" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-black text-3xl text-center shadow-inner" value={formData.totalPrice} onChange={e => handlePriceChange('totalPrice', e.target.value)} />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[11px] font-black uppercase text-slate-400 text-center block tracking-widest">Kleur Kies</label>
-                <input required type="color" className="w-full h-20 p-2 bg-slate-50 rounded-[2rem] cursor-pointer shadow-inner" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} />
-              </div>
-
-              <div className="flex gap-8 pt-8">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest text-xs">Annuleren</button>
-                <button type="submit" className="flex-1 py-7 bg-purple-600 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-none italic" style={{ backgroundColor: '#9333ea' }}>
-                  {modalMode === 'edit' ? 'BIJWERKEN' : 'OPSLAAN'}
-                </button>
+              <div className="flex gap-8 pt-6">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest">Annuleren</button>
+                <button type="submit" className="flex-1 py-8 bg-blue-600 text-white rounded-[3rem] font-black text-2xl shadow-2xl shadow-blue-100 italic transition-all active:scale-95 border-none">OPSLAAN</button>
               </div>
             </form>
           </div>
@@ -974,20 +696,25 @@ function SettingsPanel({ settings, onSave }) {
   const [temp, setTemp] = useState(settings);
   return (
     <div className="max-w-xl bg-white p-16 rounded-[4rem] border border-slate-100 shadow-sm space-y-16">
-      <div className="flex items-center gap-6 text-purple-600">
-        <div className="bg-purple-50 p-6 rounded-[2.5rem] shadow-sm shadow-purple-100"><Zap size={44} strokeWidth={3} /></div>
+      <div className="flex items-center gap-8 text-blue-600">
+        <div className="bg-blue-50 p-6 rounded-[2.5rem] shadow-sm shadow-blue-100 italic"><Zap size={44} strokeWidth={3} /></div>
         <h2 className="text-4xl font-black uppercase tracking-tight italic">Energie</h2>
       </div>
-      <div className="space-y-12">
+      
+      <div className="space-y-14">
         <div className="space-y-4 text-center">
-          <label className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Prijs per kWh (€)</label>
-          <input type="number" step="0.01" className="w-full p-8 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[3rem] outline-none font-black text-5xl text-center shadow-inner tracking-tighter" value={temp.kwhPrice} onChange={e => setTemp({...temp, kwhPrice: Number(e.target.value)})} />
+          <label className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] ml-2">Prijs per kWh (€)</label>
+          <input type="number" step="0.01" className="w-full p-10 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[3rem] outline-none font-black text-6xl text-center shadow-inner tracking-tighter" value={temp.kwhPrice} onChange={e => setTemp({...temp, kwhPrice: Number(e.target.value)})} />
         </div>
+        
         <div className="space-y-4 text-center">
-          <label className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Printer Wattage (W)</label>
-          <input type="number" className="w-full p-8 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[3rem] outline-none font-black text-5xl text-center shadow-inner tracking-tighter" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
+          <label className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] ml-2">Printer Verbruik (W)</label>
+          <input type="number" className="w-full p-10 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[3rem] outline-none font-black text-6xl text-center shadow-inner tracking-tighter" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
         </div>
-        <button onClick={() => onSave(temp)} className="w-full py-10 bg-purple-600 text-white rounded-[3rem] font-black text-3xl shadow-2xl shadow-purple-200 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border-none italic" style={{ backgroundColor: '#9333ea' }}>OPSLAAN</button>
+
+        <button onClick={() => onSave(temp)} className="w-full py-10 bg-blue-600 text-white rounded-[3.5rem] font-black text-3xl shadow-2xl shadow-blue-100 active:scale-95 transition-all italic border-none">
+          INSTELLINGEN BIJWERKEN
+        </button>
       </div>
     </div>
   );
