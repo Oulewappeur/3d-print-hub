@@ -14,11 +14,7 @@ import {
 import { 
   getAuth, 
   signInAnonymously, 
-  signInWithCustomToken, 
-  onAuthStateChanged,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signOut
+  onAuthStateChanged
 } from 'firebase/auth';
 import { 
   Package, 
@@ -38,18 +34,11 @@ import {
   Hash, 
   Archive, 
   RefreshCw, 
-  MessageSquare, 
   CheckCircle2, 
   Calendar,
   Copy,
   Edit3,
   Store,
-  ShieldCheck,
-  Lock,
-  LogOut,
-  LogIn,
-  User,
-  Info,
   ChevronRight
 } from 'lucide-react';
 
@@ -72,11 +61,6 @@ const hubId = typeof __app_id !== 'undefined' ? __app_id : 'd-printer-orders-1b6
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const googleProvider = new GoogleAuthProvider();
-
-googleProvider.setCustomParameters({
-  prompt: 'select_account'
-});
 
 const TABS = {
   DASHBOARD: 'Dashboard',
@@ -97,18 +81,13 @@ export default function App() {
   const [settings, setSettings] = useState({ kwhPrice: 0.35, printerWattage: 150 });
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
-  const [authErrorCode, setAuthErrorCode] = useState(null);
 
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        await signInAnonymously(auth);
       } catch (err) {
-        setErrorMessage("Systeemfout bij laden sessie.");
+        setErrorMessage("Verbindingsfout met de database.");
         setLoading(false);
       }
     };
@@ -116,7 +95,6 @@ export default function App() {
     
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (!u) setLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -130,11 +108,13 @@ export default function App() {
       (snapshot) => {
         setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         setErrorMessage(null);
+        setLoading(false);
       }, 
       (err) => {
         if (err.code === 'permission-denied') {
-          setErrorMessage("Toegang geweigerd door de database. Log in met antonmol.90@gmail.com.");
+          setErrorMessage("Toegang geweigerd. Controleer je Firebase Rules.");
         }
+        setLoading(false);
       }
     );
 
@@ -151,11 +131,8 @@ export default function App() {
     const unsubSettings = onSnapshot(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), 
       (docSnap) => {
         if (docSnap.exists()) setSettings(docSnap.data());
-        setLoading(false);
       }, 
-      (err) => {
-        setLoading(false);
-      }
+      (err) => console.error(err)
     );
 
     return () => {
@@ -166,31 +143,7 @@ export default function App() {
     };
   }, [user]);
 
-  const handleGoogleLogin = async () => {
-    try {
-      setErrorMessage(null);
-      setAuthErrorCode(null);
-      await signInWithPopup(auth, googleProvider);
-    } catch (err) {
-      setAuthErrorCode(err.code);
-      if (err.code === 'auth/operation-not-allowed') {
-        setErrorMessage("Google Login is nog niet ingeschakeld in je Firebase Console.");
-      } else if (err.code === 'auth/unauthorized-domain') {
-        setErrorMessage("Dit domein is niet geautoriseerd in Firebase.");
-      } else if (err.code === 'auth/popup-blocked') {
-        setErrorMessage("De browser blokkeerde de pop-up. Sta pop-ups toe.");
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        setErrorMessage("Het inlogvenster werd gesloten.");
-      } else {
-        setErrorMessage(`Inloggen mislukt: ${err.message}`);
-      }
-    }
-  };
-
-  const handleLogout = () => signOut(auth);
-
   const addItem = async (coll, data) => {
-    if (!user) return;
     try {
       if (coll === 'filaments' && data.quantity > 1) {
         const { quantity, ...singleData } = data;
@@ -205,22 +158,19 @@ export default function App() {
         });
       }
     } catch (e) {
-      if (e.code === 'permission-denied') setErrorMessage("Je hebt geen rechten.");
+      console.error(e);
     }
   };
 
   const updateItem = async (coll, id, data) => {
-    if (!user) return;
     try { await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data); } catch (e) {}
   };
 
   const deleteItem = async (coll, id) => {
-    if (!user) return;
     try { await deleteDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id)); } catch (e) {}
   };
 
   const saveSettings = async (data) => {
-    if (!user) return;
     try { await setDoc(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), data); } catch (e) {}
   };
 
@@ -269,110 +219,25 @@ export default function App() {
           })}
         </div>
         
-        <div className="mt-auto pt-8 border-t border-slate-100 space-y-6">
-          {(!user || user.isAnonymous) ? (
-            <div className="space-y-4">
-              <button 
-                onClick={handleGoogleLogin}
-                className="w-full flex items-center justify-center gap-4 px-6 py-5 rounded-[2rem] bg-white border-2 border-slate-200 text-slate-800 font-black text-xs hover:border-purple-400 hover:bg-purple-50 transition-all shadow-md active:scale-95 group"
-              >
-                <div className="w-5 h-5 flex items-center justify-center overflow-hidden shrink-0">
-                  <svg viewBox="0 0 48 48" className="w-full h-full"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24s.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
-                </div>
-                ANTON, KLIK HIER OM IN TE LOGGEN
-                <ChevronRight size={16} className="ml-auto opacity-0 group-hover:opacity-100 transition-all"/>
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center gap-4 bg-purple-50 p-5 rounded-[2rem] border border-purple-100 shadow-sm">
-                <div className="w-12 h-12 rounded-full bg-white border-2 border-purple-200 shadow-inner flex items-center justify-center overflow-hidden shrink-0">
-                  {user.photoURL ? <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" /> : <User size={24} className="text-purple-600" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest leading-none mb-1.5">Eigenaar</p>
-                  <p className="text-xs font-black text-slate-800 truncate tracking-tight">{user.displayName || user.email}</p>
-                </div>
-              </div>
-              <button 
-                onClick={handleLogout}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-slate-50 text-slate-400 font-black text-[10px] hover:bg-rose-50 hover:text-rose-600 transition-all border-none"
-              >
-                <LogOut size={14} /> AFGEMELDEN
-              </button>
-            </div>
-          )}
-
-          <div className={`p-6 rounded-[2.5rem] border transition-all ${(!user || user.isAnonymous) ? 'bg-orange-50 border-orange-100 shadow-inner' : 'bg-emerald-50 border-emerald-100'}`}>
-            <div className="flex items-center justify-center gap-2.5 mb-2">
-              {(!user || user.isAnonymous) ? (
-                <>
-                  <Lock size={12} className="text-orange-500" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">Beperkte Sessie</span>
-                </>
-              ) : (
-                <>
-                  <ShieldCheck size={12} className="text-emerald-600" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Volledige Toegang</span>
-                </>
-              )}
-            </div>
-            
-            {errorMessage && (
-              <div className="mt-3 p-4 bg-white/80 text-rose-600 rounded-2xl text-[10px] font-bold leading-relaxed flex items-start gap-3 border border-rose-100 shadow-sm">
-                <AlertTriangle size={14} className="shrink-0 mt-0.5 text-rose-500" />
-                <div className="flex-1">
-                  <span>{errorMessage}</span>
-                  {authErrorCode && (
-                    <div className="mt-1.5 pt-1.5 border-t border-rose-50 text-[8px] font-mono text-rose-300">
-                      Code: {authErrorCode}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+        {errorMessage && (
+          <div className="mt-auto p-6 bg-rose-50 border border-rose-100 rounded-[2rem] text-rose-600 text-[10px] font-bold leading-relaxed flex items-start gap-3">
+            <AlertTriangle size={14} className="shrink-0 mt-0.5 text-rose-500" />
+            <span>{errorMessage}</span>
           </div>
-        </div>
+        )}
       </nav>
 
       <main className="flex-1 p-6 md:p-14 overflow-auto bg-[#FDFCFE]">
-        <header className="mb-12 flex justify-between items-start">
-          <div>
-            <h1 className="text-5xl font-black text-slate-900 tracking-tighter uppercase italic">{activeTab}</h1>
-            <div className="h-1.5 w-24 bg-purple-600 mt-4 rounded-full shadow-lg shadow-purple-100"></div>
-          </div>
-          {(!user || user.isAnonymous) && (
-            <div className="bg-white text-orange-600 px-5 py-3 rounded-[1.5rem] text-[10px] font-black uppercase flex items-center gap-2 border border-orange-100 shadow-sm">
-              <Info size={14}/> Preview Modus: Inloggen Vereist
-            </div>
-          )}
+        <header className="mb-12">
+          <h1 className="text-5xl font-black text-slate-900 tracking-tighter uppercase italic">{activeTab}</h1>
+          <div className="h-1.5 w-24 bg-purple-600 mt-4 rounded-full shadow-lg shadow-purple-100"></div>
         </header>
 
-        {(user && !user.isAnonymous) || orders.length > 0 ? (
-          <>
-            {activeTab === TABS.DASHBOARD && <Dashboard orders={orders} products={products} filaments={filaments} settings={settings} />}
-            {activeTab === TABS.ORDERS && <OrderList orders={orders} products={products} filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
-            {activeTab === TABS.CATALOG && <ProductList products={products} filaments={filaments} settings={settings} onAdd={addItem} onDelete={deleteItem} />}
-            {activeTab === TABS.STOCK && <StockList filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
-            {activeTab === TABS.SETTINGS && <SettingsPanel settings={settings} onSave={saveSettings} />}
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-[55vh] text-center max-w-xl mx-auto bg-white p-14 rounded-[4rem] border border-slate-100 shadow-2xl shadow-slate-100">
-            <div className="bg-purple-50 p-8 rounded-[3rem] mb-10 text-purple-600">
-               <ShieldCheck size={72} strokeWidth={1.5} />
-            </div>
-            <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tight mb-4">Welkom Anton</h2>
-            <p className="text-slate-500 font-medium leading-relaxed mb-10">
-              Deze database is exclusief beveiligd voor jouw account. Log in met <strong>antonmol.90@gmail.com</strong> om je Filamenten, Producten en Bestellingen te beheren.
-            </p>
-            <button 
-              onClick={handleGoogleLogin}
-              className="bg-slate-900 text-white px-12 py-6 rounded-[2rem] font-black text-sm shadow-2xl shadow-slate-200 hover:bg-purple-600 transition-all border-none flex items-center gap-3"
-            >
-              NU INLOGGEN MET GOOGLE <ChevronRight size={18}/>
-            </button>
-          </div>
-        )}
+        {activeTab === TABS.DASHBOARD && <Dashboard orders={orders} products={products} filaments={filaments} settings={settings} />}
+        {activeTab === TABS.ORDERS && <OrderList orders={orders} products={products} filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
+        {activeTab === TABS.CATALOG && <ProductList products={products} filaments={filaments} settings={settings} onAdd={addItem} onDelete={deleteItem} />}
+        {activeTab === TABS.STOCK && <StockList filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
+        {activeTab === TABS.SETTINGS && <SettingsPanel settings={settings} onSave={saveSettings} />}
       </main>
     </div>
   );
@@ -898,7 +763,7 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-2xl flex items-center justify-center p-6 z-50">
           <div className="bg-white rounded-[4rem] p-12 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh] border border-slate-100">
-            <h2 className="text-4xl font-black mb-12 tracking-tighter uppercase text-slate-900 italic">Voorraad Invoer</h2>
+            <h2 className="text-4xl font-black mb-10 tracking-tighter uppercase text-slate-900 italic">Voorraad Invoer</h2>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-2">
