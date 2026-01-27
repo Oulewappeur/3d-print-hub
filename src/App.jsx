@@ -170,7 +170,7 @@ export default function App() {
       <nav className="w-full md:w-72 bg-white border-r border-slate-100 p-6 flex flex-col gap-2 z-20 shadow-sm overflow-y-auto">
         <div className="text-xl font-black text-purple-600 mb-10 flex items-center gap-3 px-2 italic">
           <div className="p-2 bg-purple-600 rounded-xl text-white shadow-md shadow-purple-100"><Printer size={20} strokeWidth={3} /></div>
-          3D Hub
+          Rosevalley 3D Print Hub
         </div>
         <div className="flex flex-col gap-2 flex-1">
           {Object.values(TABS).map(tab => (
@@ -333,14 +333,6 @@ function Dashboard({ orders, products, filaments, settings }) {
                ))
              )}
           </div>
-        </div>
-      </div>
-
-      <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-6">
-        <div className="p-4 bg-purple-50 text-purple-600 rounded-2xl"><TrendingUp size={24} /></div>
-        <div>
-          <h3 className="text-sm font-black uppercase text-slate-400 tracking-widest">Financieel Inzicht</h3>
-          <p className="text-slate-600 text-xs mt-1 font-bold">Gerealiseerde omzet en winst worden berekend op basis van volledig afgeronde bestellingen. Prognoses kijken naar alle openstaande items.</p>
         </div>
       </div>
     </div>
@@ -514,7 +506,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
              <div className="flex justify-between items-center px-2"><label className="text-[9px] font-black uppercase text-slate-400">Producten</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase border-none bg-transparent cursor-pointer font-black">+ Item</button></div>
              <div className="space-y-3 bg-slate-50 p-4 rounded-2xl max-h-80 overflow-y-auto shadow-inner">
                {formData.items.map((it, idx) => (
-                 <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 relative shadow-sm style={{  }}">
+                 <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 relative shadow-sm">
                    {formData.items.length > 1 && <button type="button" onClick={() => setFormData({...formData, items: formData.items.filter((_, i) => i !== idx)})} className="absolute top-1 right-1 text-slate-200 hover:text-rose-500 border-none bg-transparent"><Minus size={14}/></button>}
                    <select required className="w-full p-2 bg-slate-50 rounded-lg text-xs font-bold border-none appearance-none outline-none" value={it.productId} onChange={e => {
                      const newItems = [...formData.items]; 
