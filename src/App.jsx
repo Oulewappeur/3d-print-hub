@@ -84,18 +84,25 @@ const TABS = {
 
 const ORDER_STATUSES = ['In de wacht', 'Printen', 'Gereed', 'Afgerond'];
 
-// Hulpmiddel om G-code metadata te parsen
-const parseGCodeMetadata = (text) => {
+// Hulpmiddel om G-code metadata te parsen (nu ook voor Bambu Studio 3MF)
+const parseMetadataFromText = (text) => {
   const result = { time: 0, weight: 0, multiMaterial: [] };
+  
+  // Zoek naar printtijd (Bambu/Prusa/Orca)
+  // Formaat: ; estimated printing time (normal mode) = 1h 20m 30s
   const timeMatch = text.match(/estimated printing time.*=\s*(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?/i);
   if (timeMatch) {
     const hours = parseInt(timeMatch[1] || 0);
     const mins = parseInt(timeMatch[2] || 0);
     result.time = (hours * 60) + mins;
   } else {
+    // Cura formaat: ;TIME:3600
     const curaTimeMatch = text.match(/;TIME:(\d+)/i);
     if (curaTimeMatch) result.time = Math.round(parseInt(curaTimeMatch[1]) / 60);
   }
+
+  // Zoek naar gewicht (Bambu/Prusa/Orca)
+  // Formaat: ; filament used [g] = 15.5
   const weightMatches = [...text.matchAll(/filament used \[g\]\s*=\s*([\d.]+)/gi)];
   if (weightMatches.length > 0) {
     if (weightMatches.length > 1) {
@@ -105,6 +112,7 @@ const parseGCodeMetadata = (text) => {
       result.weight = parseFloat(weightMatches[0][1]);
     }
   } else {
+    // Cura schatting op basis van lengte
     const curaFilamentMatch = text.match(/;Filament used:\s*([\d.]+)/i);
     if (curaFilamentMatch) result.weight = Math.round(parseFloat(curaFilamentMatch[1]) * 2.98);
   }
@@ -120,6 +128,16 @@ export default function App() {
   const [settings, setSettings] = useState({ kwhPrice: 0.35, printerWattage: 150 });
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
+
+  // Laad JSZip voor 3MF ondersteuning
+  useEffect(() => {
+    if (!window.JSZip) {
+      const script = document.createElement('script');
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -502,17 +520,50 @@ function ProductList({ products, filaments, onAdd, onDelete }) {
     return Object.values(types);
   }, [filaments]);
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setParsing(true);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const meta = parseGCodeMetadata(ev.target.result);
-      setFormData(prev => ({ ...prev, weight: meta.weight || prev.weight, printTime: meta.time || prev.printTime }));
+    
+    try {
+      const is3MF = file.name.toLowerCase().endsWith('.3mf');
+      
+      if (is3MF) {
+        if (!window.JSZip) {
+          throw new Error("ZIP bibliotheek nog niet geladen. Probeer het over een moment opnieuw.");
+        }
+        
+        const zip = await window.JSZip.loadAsync(file);
+        // In Bambu Studio zit de metadata vaak in Metadata/slice_info.config of in een .gcode bestand in het archief
+        const gcodeFile = Object.keys(zip.files).find(name => name.endsWith('.gcode'));
+        
+        if (gcodeFile) {
+          const content = await zip.files[gcodeFile].async("string");
+          const meta = parseMetadataFromText(content);
+          setFormData(prev => ({ ...prev, weight: meta.weight || prev.weight, printTime: meta.time || prev.printTime }));
+        } else {
+          // Probeer te kijken naar de Bambu Config (XML-achtig)
+          const configFile = Object.keys(zip.files).find(name => name.includes('slice_info.config') || name.includes('model_settings.config'));
+          if (configFile) {
+            const content = await zip.files[configFile].async("string");
+            const meta = parseMetadataFromText(content);
+            setFormData(prev => ({ ...prev, weight: meta.weight || prev.weight, printTime: meta.time || prev.printTime }));
+          }
+        }
+      } else {
+        // Reguliere G-code
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const meta = parseMetadataFromText(ev.target.result);
+          setFormData(prev => ({ ...prev, weight: meta.weight || prev.weight, printTime: meta.time || prev.printTime }));
+        };
+        reader.readAsText(file);
+      }
+    } catch (err) {
+      console.error("Fout bij inlezen:", err);
+    } finally {
       setParsing(false);
-    };
-    reader.readAsText(file);
+    }
   };
 
   return (
@@ -545,10 +596,10 @@ function ProductList({ products, filaments, onAdd, onDelete }) {
       </div>
       {showModal && <Modal title="Product Toevoegen" onClose={() => setShowModal(false)}>
         <div className="mb-8 p-6 bg-purple-50 rounded-3xl border border-dashed border-purple-300 text-center">
-          <input type="file" accept=".gcode" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+          <input type="file" accept=".gcode,.3mf" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
           <button type="button" onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center gap-2 w-full text-purple-600 hover:text-purple-800 transition-colors">
             {parsing ? <RefreshCw className="animate-spin" /> : <Upload size={32} />}
-            <p className="text-[10px] font-black uppercase tracking-widest">{parsing ? "Parsing..." : "Lees G-code bestand in"}</p>
+            <p className="text-[10px] font-black uppercase tracking-widest">{parsing ? "Parsing..." : "Lees G-code of .3mf bestand in"}</p>
           </button>
         </div>
         <form onSubmit={(e) => { e.preventDefault(); onAdd('products', { ...formData, weight: Number(formData.weight), printTime: Number(formData.printTime), suggestedPrice: Number(formData.suggestedPrice) }); setShowModal(false); }} className="space-y-6">
@@ -653,10 +704,7 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                         </div>
                         <p className="text-slate-400 font-bold italic">{r.shopName || 'Onbekend'} • {r.purchaseDate}</p>
                       </td>
-                      <td className="px-8 py-4">
-                        <p className="font-black italic text-slate-700">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</p>
-                        <p className="text-[9px] font-bold text-purple-400 uppercase">Kostprijs: €{r.price.toFixed(2)}</p>
-                      </td>
+                      <td className="px-8 py-4"><p className="font-black italic text-slate-700">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</p></td>
                       <td className="px-8 py-4 text-right flex flex-col gap-2 items-end">
                         <div className="flex items-center gap-2">
                           <div className="flex bg-white rounded-xl border border-slate-200 p-1 px-3 items-center shadow-sm" title="Mutatie: Voer positief getal in voor verbruik, negatief voor correctie">
