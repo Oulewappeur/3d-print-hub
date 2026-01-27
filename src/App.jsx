@@ -43,7 +43,9 @@ import {
   Upload, 
   Activity, 
   Scale,
-  ListChecks
+  ListChecks,
+  PlayCircle,
+  Box
 } from 'lucide-react';
 
 // Firebase Configuratie
@@ -77,7 +79,7 @@ const TABS = {
 
 const ORDER_STATUSES = ['In de wacht', 'Printen', 'Gereed', 'Afgerond'];
 
-// Hulpmiddel om G-code metadata te parsen
+// Hulpmiddel om G-code metadata te parsen (Cura & Bambu)
 const parseMetadataFromText = (text) => {
   const result = { time: 0, weight: 0, multiMaterial: [] };
   const timeMatch = text.match(/estimated printing time.*=\s*(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?/i);
@@ -92,6 +94,9 @@ const parseMetadataFromText = (text) => {
   const weightMatches = [...text.matchAll(/filament used \[g\]\s*=\s*([\d.]+)/gi)];
   if (weightMatches.length > 0) {
     result.weight = weightMatches.reduce((a, b) => a + parseFloat(b[1]), 0);
+  } else {
+    const curaFilamentMatch = text.match(/;Filament used:\s*([\d.]+)/i);
+    if (curaFilamentMatch) result.weight = Math.round(parseFloat(curaFilamentMatch[1]) * 2.98); // Versimpelde omrekening mm naar g
   }
   return result;
 };
@@ -158,7 +163,7 @@ export default function App() {
   if (loading) return <div className="h-screen flex items-center justify-center font-black text-purple-600 animate-pulse uppercase tracking-widest">Laden...</div>;
 
   return (
-    <div className="min-h-screen bg-[#FDFCFE] flex flex-col md:flex-row font-sans text-slate-900">
+    <div className="min-h-screen bg-[#FDFCFE] flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
       <nav className="w-full md:w-72 bg-white border-r border-slate-100 p-6 flex flex-col gap-2 z-20 shadow-sm overflow-y-auto">
         <div className="text-xl font-black text-purple-600 mb-10 flex items-center gap-3 px-2 italic">
           <div className="p-2 bg-purple-600 rounded-xl text-white shadow-md shadow-purple-100"><Printer size={20} strokeWidth={3} /></div>
@@ -166,7 +171,7 @@ export default function App() {
         </div>
         <div className="flex flex-col gap-2 flex-1">
           {Object.values(TABS).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all ${activeTab === tab ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:bg-purple-50'}`}>
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none ring-0 appearance-none select-none ${activeTab === tab ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:bg-purple-50'}`}>
               <span className="text-sm font-bold uppercase tracking-tight">{tab}</span>
             </button>
           ))}
@@ -193,7 +198,6 @@ function Dashboard({ orders, products, filaments, settings }) {
     let revenue = 0;
     let cost = 0;
     
-    // Alleen bestellingen die volledig zijn afgerond meetellen voor omzet en winst
     const completedOrders = orders.filter(o => (o.items || []).every(i => i.status === 'Afgerond'));
     const activeOrders = orders.filter(o => !(o.items || []).every(i => i.status === 'Afgerond'));
 
@@ -209,12 +213,7 @@ function Dashboard({ orders, products, filaments, settings }) {
       });
     });
 
-    return { 
-      revenue, 
-      profit: revenue - cost, 
-      openOrderCount: activeOrders.length,
-      completedOrderCount: completedOrders.length
-    };
+    return { revenue, profit: revenue - cost, openOrderCount: activeOrders.length, completedOrderCount: completedOrders.length };
   }, [orders, products, filaments, settings]);
 
   return (
@@ -227,14 +226,10 @@ function Dashboard({ orders, products, filaments, settings }) {
       </div>
 
       <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-6">
-        <div className="p-4 bg-purple-50 text-purple-600 rounded-2xl">
-          <TrendingUp size={24} />
-        </div>
+        <div className="p-4 bg-purple-50 text-purple-600 rounded-2xl"><TrendingUp size={24} /></div>
         <div>
           <h3 className="text-sm font-black uppercase text-slate-400 tracking-widest">Financieel Inzicht</h3>
-          <p className="text-slate-600 text-xs mt-1">
-            Omzet en winst worden pas berekend wanneer een bestelling volledig is gemarkeerd als <span className="font-bold text-purple-600 italic">Afgerond</span>.
-          </p>
+          <p className="text-slate-600 text-xs mt-1">Omzet wordt geteld bij volledig afgeronde bestellingen.</p>
         </div>
       </div>
     </div>
@@ -272,7 +267,6 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
     editingId ? onUpdate('orders', editingId, formData) : onAdd('orders', formData);
     setShowModal(false);
     setEditingId(null);
-    setFormData({ customer: '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }] });
   };
 
   const OrderTable = ({ list, title, isCompletedSection = false }) => (
@@ -300,7 +294,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
                   <div className="flex flex-wrap gap-2">
                     {(o.items || []).map((item, idx) => (
                       <span key={idx} className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-400' : 'bg-purple-50 text-purple-600'}`}>
-                        {item.quantity}x {products.find(p => p.id === item.productId)?.name || '?'}
+                        {item.quantity}x {products.find(p => p.id === item.productId)?.name || '?'} ({item.status})
                       </span>
                     ))}
                   </div>
@@ -346,8 +340,8 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
           </div>
           <Input label="Chat Link" value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
           <div className="space-y-3">
-             <div className="flex justify-between items-center"><label className="text-[9px] font-black uppercase text-slate-400">Items</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase border-none bg-transparent cursor-pointer">+ Item</button></div>
-             <div className="space-y-3 bg-slate-50 p-4 rounded-2xl">
+             <div className="flex justify-between items-center px-2"><label className="text-[9px] font-black uppercase text-slate-400">Items</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase border-none bg-transparent cursor-pointer">+ Item</button></div>
+             <div className="space-y-3 bg-slate-50 p-4 rounded-2xl max-h-80 overflow-y-auto shadow-inner">
                {formData.items.map((it, idx) => (
                  <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 relative shadow-sm space-y-3">
                    {formData.items.length > 1 && <button type="button" onClick={() => setFormData({...formData, items: formData.items.filter((_, i) => i !== idx)})} className="absolute top-1 right-1 text-slate-200 hover:text-rose-500 border-none bg-transparent"><Minus size={14}/></button>}
@@ -372,7 +366,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
                ))}
              </div>
           </div>
-          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg italic transition-all border-none cursor-pointer">Opslaan</button>
+          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic">Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -382,8 +376,11 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
 function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, settings }) {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [expanded, setExpanded] = useState({});
   const [archived, setArchived] = useState(false);
+  const [parsing, setParsing] = useState(false);
   const [formData, setFormData] = useState({ name: '', filaments: [], suggestedPrice: '', timeH: 0, timeM: 0 });
+  const fileInputRef = useRef(null);
 
   const netStockData = useMemo(() => {
     const data = {};
@@ -399,10 +396,41 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
     return data;
   }, [products, orders]);
 
+  const uniqueFilamentTypes = useMemo(() => {
+    const types = {};
+    filaments.forEach(f => {
+      const k = `${f.brand}-${f.materialType}-${f.colorName}`;
+      if (!types[k]) types[k] = { k, color: f.colorCode, brand: f.brand, colorName: f.colorName };
+    });
+    return Object.values(types);
+  }, [filaments]);
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setParsing(true);
+    try {
+      const is3MF = file.name.toLowerCase().endsWith('.3mf');
+      let content = "";
+      if (is3MF) {
+        const zip = await window.JSZip.loadAsync(file);
+        const gcodeFile = Object.keys(zip.files).find(name => name.endsWith('.gcode'));
+        if (gcodeFile) content = await zip.files[gcodeFile].async("string");
+      } else {
+        const reader = new FileReader();
+        content = await new Promise((res) => { reader.onload = (ev) => res(ev.target.result); reader.readAsText(file); });
+      }
+      if (content) {
+        const meta = parseMetadataFromText(content);
+        setFormData(prev => ({ ...prev, timeH: Math.floor(meta.time / 60), timeM: meta.time % 60 }));
+      }
+    } catch (err) { console.error(err); } finally { setParsing(false); }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <button onClick={() => { setEditingId(null); setFormData({name:'', filaments:[], suggestedPrice:'', timeH:0, timeM:0}); setShowModal(true); }} className="bg-purple-600 text-white px-8 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none cursor-pointer">Nieuw Product</button>
+        <button onClick={() => { setEditingId(null); setFormData({name:'', filaments:[], suggestedPrice:'', timeH:0, timeM:0}); setShowModal(true); }} className="bg-purple-600 text-white px-8 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none cursor-pointer"><Plus size={18} className="inline mr-2" /> Nieuw Product</button>
         <button onClick={() => setArchived(!archived)} className="text-[10px] font-black uppercase text-slate-400 border-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors">
           <Archive size={14} className="inline mr-1" /> {archived ? 'Toon Actief' : 'Toon Archief'}
         </button>
@@ -411,32 +439,67 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left">
           <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
-            <tr><th className="px-8 py-4">Product</th><th className="px-8 py-4 text-center">Voorraad</th><th className="px-8 py-4 text-center">Netto</th><th className="px-8 py-4 text-right">Beheer</th></tr>
+            <tr><th className="px-8 py-4">Product</th><th className="px-8 py-4 text-center">Voorraad</th><th className="px-8 py-4 text-center">Netto</th><th className="px-8 py-4 text-right">Details</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {products.filter(p => archived ? p.status === 'gearchiveerd' : p.status !== 'gearchiveerd').map(p => {
+              const isEx = expanded[p.id];
               const net = netStockData[p.id];
+              const matCost = (p.filaments || []).reduce((s, f) => s + (f.weight * getFilamentGramPrice(filaments, f.key)), 0);
+              const energy = (p.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice;
+              
               return (
-                <tr key={p.id} className="hover:bg-slate-50/30">
-                  <td className="px-8 py-5">
-                    <p className="font-bold text-slate-800">{p.name}</p>
-                    <p className="text-[9px] text-slate-400 uppercase font-black">{Math.floor(p.printTime / 60)}u {p.printTime % 60}m • {p.weight}g</p>
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => onUpdate('products', p.id, {stockQuantity: (p.stockQuantity || 0) - 1})} className="p-1 text-slate-300 hover:text-rose-500 border-none bg-transparent"><Minus size={12}/></button>
-                      <p className="font-black text-slate-700 w-6 text-center">{p.stockQuantity || 0}</p>
-                      <button onClick={() => onUpdate('products', p.id, {stockQuantity: (p.stockQuantity || 0) + 1})} className="p-1 text-slate-300 hover:text-emerald-500 border-none bg-transparent"><Plus size={12}/></button>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5 text-center">
-                    <p className={`font-black italic text-lg ${net < 0 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>{net}</p>
-                  </td>
-                  <td className="px-8 py-5 text-right flex justify-end gap-1">
-                    <button onClick={() => { setEditingId(p.id); setFormData({name: p.name, filaments: p.filaments || [], suggestedPrice: p.suggestedPrice || '', timeH: Math.floor(p.printTime / 60), timeM: p.printTime % 60}); setShowModal(true); }} className="p-2 text-slate-200 hover:text-purple-600 border-none bg-transparent"><Edit3 size={16}/></button>
-                    <button onClick={() => onUpdate('products', p.id, {status: archived ? 'actief' : 'gearchiveerd'})} className="p-2 text-slate-200 hover:text-purple-600 border-none bg-transparent">{archived ? <RefreshCw size={16}/> : <Archive size={16}/>}</button>
-                  </td>
-                </tr>
+                <React.Fragment key={p.id}>
+                  <tr onClick={() => setExpanded({...expanded, [p.id]: !isEx})} className="hover:bg-slate-50/50 cursor-pointer transition-colors">
+                    <td className="px-8 py-5">
+                      <p className="font-bold text-slate-800">{p.name}</p>
+                      <div className="flex gap-1 mt-1">
+                        {(p.filaments || []).map(f => (
+                          <div key={f.key} className="w-2.5 h-2.5 rounded-full border border-slate-200" style={{ backgroundColor: filaments.find(fil => `${fil.brand}-${fil.materialType}-${fil.colorName}` === f.key)?.colorCode }}></div>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center justify-center gap-3">
+                        <button onClick={(e) => { e.stopPropagation(); onUpdate('products', p.id, {stockQuantity: (p.stockQuantity || 0) - 1}); }} className="p-1 text-slate-300 hover:text-rose-500 border-none bg-transparent cursor-pointer"><Minus size={14}/></button>
+                        <p className="font-black text-slate-700 w-8 text-center">{p.stockQuantity || 0}</p>
+                        <button onClick={(e) => { e.stopPropagation(); onUpdate('products', p.id, {stockQuantity: (p.stockQuantity || 0) + 1}); }} className="p-1 text-slate-300 hover:text-emerald-500 border-none bg-transparent cursor-pointer"><Plus size={14}/></button>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5 text-center">
+                      <p className={`font-black italic text-lg ${net < 0 ? 'text-rose-500' : 'text-slate-400'}`}>{net}</p>
+                    </td>
+                    <td className="px-8 py-5 text-right text-slate-300">{isEx ? <ChevronDown size={20}/> : <ChevronRight size={20}/>}</td>
+                  </tr>
+                  {isEx && (
+                    <tr className="bg-slate-50/30 border-l-4 border-purple-500">
+                      <td colSpan="4" className="px-12 py-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                          <div>
+                            <p className="text-[9px] font-black uppercase text-slate-400 mb-2">Details</p>
+                            <p className="text-xs font-bold text-slate-600 italic">Tijd: {Math.floor(p.printTime / 60)}u {p.printTime % 60}m</p>
+                            <p className="text-xs font-bold text-slate-600 italic">Gewicht: {p.weight}g</p>
+                            <div className="mt-4 flex gap-2">
+                              <button onClick={() => { setEditingId(p.id); setFormData({name: p.name, filaments: p.filaments || [], suggestedPrice: p.suggestedPrice || '', timeH: Math.floor(p.printTime / 60), timeM: p.printTime % 60}); setShowModal(true); }} className="p-2 bg-white rounded-xl text-purple-600 shadow-sm border border-slate-100"><Edit3 size={16}/></button>
+                              <button onClick={() => onUpdate('products', p.id, {status: archived ? 'actief' : 'gearchiveerd'})} className="p-2 bg-white rounded-xl text-slate-400 shadow-sm border border-slate-100">{archived ? <RefreshCw size={16}/> : <Archive size={16}/>}</button>
+                              <button onClick={() => onDelete('products', p.id)} className="p-2 bg-white rounded-xl text-rose-300 shadow-sm border border-slate-100 hover:text-rose-600"><Trash2 size={16}/></button>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black uppercase text-slate-400 mb-2">Kostprijs</p>
+                            <p className="text-xl font-black italic text-slate-600">€{(matCost + energy).toFixed(2)}</p>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">Materiaal: €{matCost.toFixed(2)} • Stroom: €{energy.toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black uppercase text-slate-400 mb-2">Verkoopprijs</p>
+                            <p className="text-xl font-black italic text-purple-600">€{(p.suggestedPrice || 0).toFixed(2)}</p>
+                            <p className="text-[9px] text-emerald-500 font-black uppercase mt-1">Marge: €{(p.suggestedPrice - (matCost + energy)).toFixed(2)}</p>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -444,6 +507,13 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
       </div>
 
       {showModal && <Modal title={editingId ? "Product Bewerken" : "Nieuw Product"} onClose={() => setShowModal(false)}>
+        <div className="mb-6 p-6 bg-purple-50 rounded-3xl border border-dashed border-purple-200 text-center">
+          <input type="file" accept=".gcode,.3mf" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+          <button type="button" onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center gap-2 w-full text-purple-600 border-none bg-transparent cursor-pointer">
+            {parsing ? <RefreshCw className="animate-spin" /> : <Upload size={24} />}
+            <p className="text-[9px] font-black uppercase tracking-widest">{parsing ? "Laden..." : "Importeer G-code / 3MF"}</p>
+          </button>
+        </div>
         <form onSubmit={(e) => {
           e.preventDefault();
           const final = { name: formData.name, filaments: formData.filaments, printTime: (Number(formData.timeH) * 60) + Number(formData.timeM), suggestedPrice: Number(formData.suggestedPrice), weight: formData.filaments.reduce((s,f) => s + Number(f.weight), 0) };
@@ -457,28 +527,21 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
           </div>
           <div className="space-y-2">
             <label className="text-[9px] font-black uppercase text-slate-400">Filamenten</label>
-            <div className="bg-slate-50 p-3 rounded-xl max-h-40 overflow-y-auto space-y-2">
-              {useMemo(() => {
-                const types = {};
-                filaments.forEach(f => {
-                  const k = `${f.brand}-${f.materialType}-${f.colorName}`;
-                  if (!types[k]) types[k] = { k, color: f.colorCode };
-                });
-                return Object.values(types);
-              }, [filaments]).map(type => {
+            <div className="bg-slate-50 p-4 rounded-2xl max-h-48 overflow-y-auto space-y-2 shadow-inner">
+              {uniqueFilamentTypes.map(type => {
                 const assign = formData.filaments.find(f => f.key === type.k);
                 return (
                   <div key={type.k} className="flex items-center gap-2">
-                    <button type="button" onClick={() => setFormData({...formData, filaments: assign ? formData.filaments.filter(f => f.key !== type.k) : [...formData.filaments, {key: type.k, weight: 0}]})} className={`flex-1 p-2 rounded-lg text-[9px] font-black uppercase flex items-center gap-2 border-none cursor-pointer transition-colors ${assign ? 'bg-purple-600 text-white' : 'bg-white text-slate-400'}`}>
-                      <div className="w-2 h-2 rounded-full border border-white" style={{backgroundColor: type.color}}></div> {type.k}
+                    <button type="button" onClick={() => setFormData({...formData, filaments: assign ? formData.filaments.filter(f => f.key !== type.k) : [...formData.filaments, {key: type.k, weight: 0}]})} className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none cursor-pointer transition-all ${assign ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-slate-400'}`}>
+                      <div className="w-2.5 h-2.5 rounded-full border border-white" style={{backgroundColor: type.color}}></div> {type.brand} {type.colorName}
                     </button>
-                    {assign && <input type="number" className="w-16 p-2 bg-white rounded-lg text-[9px] font-black border-none outline-none" placeholder="Gram" value={assign.weight} onChange={e => setFormData({...formData, filaments: formData.filaments.map(f => f.key === type.k ? {...f, weight: e.target.value} : f)})} />}
+                    {assign && <input type="number" className="w-16 p-2 bg-white rounded-lg text-[10px] font-black border-none outline-none shadow-sm" placeholder="G" value={assign.weight} onChange={e => setFormData({...formData, filaments: formData.filaments.map(f => f.key === type.k ? {...f, weight: Number(e.target.value)} : f)})} />}
                   </div>
                 );
               })}
             </div>
           </div>
-          <Input label="Adviesprijs" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} />
+          <Input label="Verkoopprijs (€)" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} required />
           <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic">Opslaan</button>
         </form>
       </Modal>}
@@ -505,15 +568,15 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <button onClick={() => setShowModal(true)} className="bg-purple-600 text-white px-8 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none cursor-pointer">+ Rol</button>
+        <button onClick={() => setShowModal(true)} className="bg-purple-600 text-white px-8 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none cursor-pointer">+ Rol Toevoegen</button>
         <button onClick={() => setArchived(!archived)} className="text-[10px] font-black uppercase text-slate-400 border-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors">
-          {archived ? 'Toon Voorraad' : 'Toon Leeg'}
+          {archived ? 'Toon Actief' : 'Toon Leeg'}
         </button>
       </div>
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left">
           <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black border-b border-slate-100">
-            <tr><th className="px-8 py-4">Kleur</th><th className="px-8 py-4">Naam</th><th className="px-8 py-4">Voorraad</th><th className="px-8 py-4 text-right">Details</th></tr>
+            <tr><th className="px-8 py-4">Kleur</th><th className="px-8 py-4">Naam</th><th className="px-8 py-4">Voorraad</th><th className="px-8 py-4 text-right">Beheer</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {grouped.map(g => {
@@ -522,20 +585,26 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
               const total = g.rolls.reduce((s, r) => s + (r.totalWeight - (r.usedWeight || 0)), 0);
               return (
                 <React.Fragment key={k}>
-                  <tr onClick={() => setExpanded({...expanded, [k]: !isEx})} className="hover:bg-slate-50/50 cursor-pointer">
-                    <td className="px-8 py-5"><div className="w-6 h-6 rounded-lg shadow-inner border border-slate-100" style={{backgroundColor: g.colorCode}}></div></td>
+                  <tr onClick={() => setExpanded({...expanded, [k]: !isEx})} className="hover:bg-slate-50/50 cursor-pointer transition-colors">
+                    <td className="px-8 py-5"><div className="w-8 h-8 rounded-xl shadow-inner border border-slate-100" style={{backgroundColor: g.colorCode}}></div></td>
                     <td className="px-8 py-5"><p className="font-bold text-slate-800">{g.brand} {g.materialType}</p><p className="text-[9px] text-slate-400 uppercase font-black">{g.colorName}</p></td>
-                    <td className="px-8 py-5 font-black text-slate-700 italic">{Math.round(total)}g</td>
-                    <td className="px-8 py-5 text-right text-slate-300">{isEx ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}</td>
+                    <td className="px-8 py-5 font-black text-slate-700 italic text-lg">{Math.round(total)}g</td>
+                    <td className="px-8 py-5 text-right text-slate-300">{isEx ? <ChevronDown size={22}/> : <ChevronRight size={22}/>}</td>
                   </tr>
                   {isEx && g.rolls.map(r => (
-                    <tr key={r.id} className="bg-slate-50/30 text-[9px] font-black uppercase text-slate-400">
-                      <td colSpan="2" className="px-10 py-3">Rol #{r.id.slice(-4)} ({r.status})</td>
-                      <td className="px-8 py-3">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
-                      <td className="px-8 py-3 text-right flex justify-end gap-2">
-                        <input type="number" placeholder="+/- Gram" className="w-14 p-1 bg-white rounded border-none shadow-inner outline-none" onKeyDown={e => e.key === 'Enter' && (onUpdate('filaments', r.id, {usedWeight: (r.usedWeight || 0) + Number(e.target.value)}), e.target.value = '')} />
-                        <button onClick={() => onUpdate('filaments', r.id, {status: r.status === 'actief' ? 'voorraad' : 'actief'})} className={`p-1 rounded ${r.status === 'actief' ? 'text-emerald-500 bg-emerald-50' : 'text-slate-300'} border-none bg-transparent cursor-pointer`}><Zap size={12}/></button>
-                        <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-1 text-slate-300 hover:text-rose-500 border-none bg-transparent cursor-pointer"><Trash2 size={12}/></button>
+                    <tr key={r.id} className="bg-slate-50/30 border-l-4 border-purple-500">
+                      <td colSpan="2" className="px-10 py-4">
+                        <p className="text-[9px] font-black uppercase text-slate-400">Rol #{r.id.slice(-4)} ({r.status})</p>
+                        <p className="text-xs text-slate-500 font-bold italic">Sinds: {r.purchaseDate}</p>
+                      </td>
+                      <td className="px-8 py-4 font-black text-slate-600">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
+                      <td className="px-8 py-4 text-right flex justify-end gap-2">
+                        <div className="flex bg-white rounded-lg border border-slate-200 p-1 px-3 items-center shadow-sm">
+                          <Hash size={12} className="text-purple-500 mr-2" />
+                          <input type="number" placeholder="+/- G" className="w-12 text-[10px] font-bold outline-none border-none p-0 bg-transparent" onKeyDown={e => e.key === 'Enter' && (onUpdate('filaments', r.id, {usedWeight: Math.max(0, (r.usedWeight || 0) + Number(e.target.value))}), e.target.value = '')} />
+                        </div>
+                        <button onClick={() => onUpdate('filaments', r.id, {status: r.status === 'actief' ? 'voorraad' : 'actief'})} className={`p-2 rounded-xl transition-all border-none ${r.status === 'actief' ? 'bg-emerald-50 text-emerald-500' : 'bg-white text-slate-300'} cursor-pointer shadow-sm`}><Zap size={16}/></button>
+                        <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2 bg-white rounded-xl text-slate-300 hover:text-rose-500 border-none cursor-pointer shadow-sm"><Archive size={16}/></button>
                       </td>
                     </tr>
                   ))}
@@ -549,14 +618,14 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
         <form onSubmit={(e) => {
           e.preventDefault();
           const { quantity, ...data } = formData;
-          for(let i=0; i<quantity; i++) onAdd('filaments', {...data, usedWeight: 0, status: 'voorraad'});
+          for(let i=0; i<quantity; i++) onAdd('filaments', {...data, usedWeight: 0, status: 'voorraad', price: Number(data.price)});
           setShowModal(false);
         }} className="space-y-6">
           <div className="grid grid-cols-2 gap-4"><Input label="Merk" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} required /><Input label="Type" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required /></div>
-          <div className="grid grid-cols-2 gap-4"><Input label="Kleur Naam" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-2">Visueel</label><input type="color" className="w-full h-10 p-1 bg-slate-50 rounded-xl border-none cursor-pointer" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
-          <div className="grid grid-cols-2 gap-4"><Input label="Prijs" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required /><Input label="Gewicht (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required /></div>
+          <div className="grid grid-cols-2 gap-4"><Input label="Kleur" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-2">Visueel</label><input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer shadow-inner" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
+          <div className="grid grid-cols-2 gap-4"><Input label="Prijs" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required /><Input label="Totaal (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required /></div>
           <Input label="Aantal rollen" type="number" min="1" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />
-          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic">Opslaan</button>
+          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic">In Voorraad Plaatsen</button>
         </form>
       </Modal>}
     </div>
@@ -567,10 +636,10 @@ function SettingsPanel({ settings, onSave }) {
   const [temp, setTemp] = useState(settings);
   return (
     <div className="max-w-md bg-white p-12 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8 animate-in slide-in-from-right-4">
-      <h2 className="text-2xl font-black italic uppercase text-purple-600 tracking-tighter">Energie</h2>
+      <h2 className="text-2xl font-black italic uppercase text-purple-600 tracking-tighter">Configuratie</h2>
       <Input label="Prijs p/kWh (€)" type="number" step="0.01" value={temp.kwhPrice} onChange={e => setTemp({...temp, kwhPrice: Number(e.target.value)})} />
-      <Input label="Printer (Watt)" type="number" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
-      <button onClick={() => onSave(temp)} className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-xl transition-all border-none cursor-pointer italic">Opslaan</button>
+      <Input label="Printer Verbruik (W)" type="number" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
+      <button onClick={() => onSave(temp)} className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-xl transition-all border-none cursor-pointer italic">Instellingen Opslaan</button>
     </div>
   );
 }
@@ -578,8 +647,8 @@ function SettingsPanel({ settings, onSave }) {
 function Input({ label, ...props }) {
   return (
     <div className="space-y-1 flex-1">
-      <label className="text-[9px] font-black uppercase text-slate-400 ml-3 block">{label}</label>
-      <input {...props} className="w-full p-4 bg-slate-50 rounded-xl border-none font-bold text-slate-700 shadow-inner outline-none focus:bg-slate-100 transition-all" />
+      <label className="text-[9px] font-black uppercase text-slate-400 ml-3 block tracking-wider">{label}</label>
+      <input {...props} className="w-full p-5 bg-slate-50 rounded-[1.5rem] border-none font-bold text-slate-700 shadow-inner outline-none focus:bg-slate-100 transition-all" />
     </div>
   );
 }
