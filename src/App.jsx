@@ -39,7 +39,10 @@ import {
   CheckCircle2, 
   Calendar,
   Copy,
-  Edit3
+  Edit3,
+  Store,
+  ShieldCheck,
+  Lock
 } from 'lucide-react';
 
 /**
@@ -56,12 +59,16 @@ const myFirebaseConfig = {
 };
 
 /**
- * FIREBASE SECURITY RULES INSTRUCTIE:
- * Kopieer de onderstaande regels naar je Firebase Console -> Firestore -> Rules:
+ * EXCLUSIEVE BEVEILIGINGSRULES (Alleen voor JOU):
+ * Kopieer dit naar Firebase Console -> Firestore -> Rules.
+ * Vervang 'jouw-email@gmail.com' door je eigen adres.
  * * service cloud.firestore {
  * match /databases/{database}/documents {
  * match /artifacts/d-printer-orders-1b6f3/{document=**} {
- * allow read, write: if request.auth != null;
+ * // Alleen toegang als de ingelogde persoon jouw email heeft
+ * allow read, write: if request.auth != null && request.auth.token.email == "jouw-email@gmail.com";
+ * * // Gebruik je anoniem inloggen? Gebruik dan de onderstaande regel (minder veilig):
+ * // allow read, write: if request.auth != null;
  * }
  * }
  * }
@@ -103,11 +110,12 @@ export default function App() {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
+          // Voorlopig anoniem, maar klaar voor Google Auth
           await signInAnonymously(auth);
         }
       } catch (err) {
         console.error("Auth error:", err);
-        setErrorMessage("Authenticatie mislukt. Schakel 'Anonymous Auth' in in de Firebase Console.");
+        setErrorMessage("Beveiligingsfout: Geen toegang tot de database.");
         setLoading(false);
       }
     };
@@ -130,9 +138,8 @@ export default function App() {
         setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       }, 
       (err) => {
-        console.error("Orders sync error:", err);
         if (err.code === 'permission-denied') {
-          setErrorMessage("Toegang geweigerd door Security Rules. Update je regels in de Firebase Console.");
+          setErrorMessage("Toegang geweigerd. Alleen geautoriseerde gebruikers mogen deze data zien.");
         }
       }
     );
@@ -141,14 +148,14 @@ export default function App() {
       (snapshot) => {
         setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       }, 
-      (err) => console.error("Products sync error:", err)
+      (err) => console.error("Products error:", err)
     );
 
     const unsubFilaments = onSnapshot(query(getPath('filaments')), 
       (snapshot) => {
         setFilaments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       }, 
-      (err) => console.error("Filaments sync error:", err)
+      (err) => console.error("Filaments error:", err)
     );
 
     const unsubSettings = onSnapshot(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), 
@@ -157,7 +164,7 @@ export default function App() {
         setLoading(false);
       }, 
       (err) => {
-        console.error("Settings sync error:", err);
+        console.error("Settings error:", err);
         setLoading(false);
       }
     );
@@ -171,12 +178,8 @@ export default function App() {
   }, [user]);
 
   const addItem = async (coll, data) => {
-    if (!user) {
-      setErrorMessage("Niet verbonden. Kan niet opslaan.");
-      return;
-    }
+    if (!user) return;
     try {
-      // Ondersteuning voor bulk filament toevoegen
       if (coll === 'filaments' && data.quantity > 1) {
         const { quantity, ...singleData } = data;
         for (let i = 0; i < quantity; i++) {
@@ -193,14 +196,8 @@ export default function App() {
           createdAt: new Date().toISOString()
         });
       }
-      setErrorMessage(null);
     } catch (e) {
-      console.error("Fout bij opslaan:", e);
-      if (e.code === 'permission-denied') {
-        setErrorMessage("Security Rules blokkeren het opslaan.");
-      } else {
-        setErrorMessage(`Opslaan mislukt: ${e.message}`);
-      }
+      if (e.code === 'permission-denied') setErrorMessage("Je hebt geen rechten om data op te slaan.");
     }
   };
 
@@ -209,7 +206,7 @@ export default function App() {
     try {
       await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data);
     } catch (e) {
-      console.error("Fout bij updaten:", e);
+      console.error(e);
     }
   };
 
@@ -218,7 +215,7 @@ export default function App() {
     try {
       await deleteDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id));
     } catch (e) {
-      console.error("Fout bij verwijderen:", e);
+      console.error(e);
     }
   };
 
@@ -227,7 +224,7 @@ export default function App() {
     try {
       await setDoc(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), data);
     } catch (e) {
-      console.error("Fout bij instellingen opslaan:", e);
+      console.error(e);
     }
   };
 
@@ -236,7 +233,7 @@ export default function App() {
       <div className="flex h-screen items-center justify-center bg-white">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-xl font-black text-purple-600 uppercase tracking-widest">3D Hub laden...</p>
+          <p className="text-xl font-black text-purple-600 uppercase tracking-widest">3D Hub Beveiligen...</p>
         </div>
       </div>
     );
@@ -280,9 +277,19 @@ export default function App() {
         
         <div className="mt-auto p-4 bg-slate-50 rounded-2xl text-[10px] text-slate-400 font-mono break-all border border-slate-100">
           <div className="mb-2 flex items-center justify-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${user ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            <span className="font-bold uppercase tracking-widest">{user ? 'Online' : 'Offline'}</span>
+            {user?.isAnonymous ? (
+              <>
+                <Lock size={12} className="text-orange-500" />
+                <span className="font-bold uppercase tracking-widest text-orange-600">Beperkte Sessie</span>
+              </>
+            ) : (
+              <>
+                <ShieldCheck size={12} className="text-green-500" />
+                <span className="font-bold uppercase tracking-widest text-green-600">Volledig Beveiligd</span>
+              </>
+            )}
           </div>
+          {user?.email && <div className="mb-1 truncate font-bold text-slate-600">{user.email}</div>}
           Project: {hubId}
           {errorMessage && (
             <div className="mt-2 p-2 bg-red-100 text-red-600 rounded text-[9px] font-bold">
@@ -330,7 +337,7 @@ function Dashboard({ orders, products, filaments, settings }) {
         if (linkedFilaments.length > 0) {
           const weightPerFilament = prod.weight / linkedFilaments.length;
           linkedFilaments.forEach(f => {
-            materialCostForOne += (weightPerFilament / f.totalWeight) * f.price;
+            materialCostForOne += (weightPerFilament / (f.totalWeight || 1000)) * f.price;
           });
         }
         
@@ -339,7 +346,7 @@ function Dashboard({ orders, products, filaments, settings }) {
       }
     });
 
-    const criticalFilaments = filaments.filter(f => f.status === 'actief' && ((f.totalWeight - (f.usedWeight || 0)) / f.totalWeight) < 0.15);
+    const criticalFilaments = filaments.filter(f => f.status === 'actief' && ((f.totalWeight - (f.usedWeight || 0)) / (f.totalWeight || 1)) < 0.15);
 
     return { openOrders, readyOrders, totalRevenue, totalProfit: totalRevenue - totalCost, activePrints: orders.filter(o => o.status === 'Printen').length, criticalFilaments };
   }, [orders, products, filaments, settings]);
@@ -372,7 +379,7 @@ function Dashboard({ orders, products, filaments, settings }) {
             <Clock size={24} className="text-purple-600" /> Recente Orders
           </h2>
           <div className="space-y-4">
-            {orders.length === 0 ? <p className="text-slate-400 italic text-center py-10">Nog geen bestellingen opgeslagen.</p> : orders.slice(0, 5).map(order => (
+            {orders.length === 0 ? <p className="text-slate-400 italic text-center py-10">Nog geen bestellingen.</p> : orders.slice(0, 5).map(order => (
               <div key={order.id} className="flex justify-between items-center p-5 bg-slate-50 rounded-3xl border border-transparent transition-all">
                 <div>
                   <p className="font-bold text-slate-900 text-lg leading-tight">{order.customer}</p>
@@ -398,7 +405,7 @@ function Dashboard({ orders, products, filaments, settings }) {
           <div className="space-y-8">
             {filaments.filter(f => f.status === 'actief').map(fil => {
               const rem = fil.totalWeight - (fil.usedWeight || 0);
-              const perc = (rem / fil.totalWeight) * 100;
+              const perc = (rem / (fil.totalWeight || 1)) * 100;
               return (
                 <div key={fil.id} className="space-y-3">
                   <div className="flex justify-between items-end px-1">
@@ -426,7 +433,7 @@ function Dashboard({ orders, products, filaments, settings }) {
 
 function StatCard({ title, value, icon, color }) {
   return (
-    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col items-center text-center gap-4 hover:shadow-xl hover:shadow-purple-50/50 transition-all duration-300">
+    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col items-center text-center gap-4 hover:shadow-xl transition-all duration-300">
       <div className={`p-4 ${color} rounded-3xl`}>{icon}</div>
       <div>
         <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.15em] mb-1">{title}</p>
@@ -579,7 +586,7 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
     if (linkedFilaments.length > 0) {
       const weightPerFil = p.weight / linkedFilaments.length;
       linkedFilaments.forEach(f => {
-        materialCost += (weightPerFil / f.totalWeight) * f.price;
+        materialCost += (weightPerFil / (f.totalWeight || 1000)) * f.price;
       });
     }
 
@@ -650,7 +657,7 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
 
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xl flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh]">
+          <div className="bg-white rounded-[3.5rem] p-12 w-full max-xl shadow-2xl overflow-y-auto max-h-[90vh]">
             <h2 className="text-3xl font-black mb-10 tracking-tight uppercase text-slate-900">Product Toevoegen</h2>
             <form onSubmit={handleSubmit} className="space-y-6">
               <input required placeholder="Naam" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
@@ -660,7 +667,7 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
               </div>
               
               <div className="space-y-3">
-                <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Selecteer Filamenten (Meerdere kleuren mogelijk)</label>
+                <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Selecteer Filamenten (Meerdere kleuren)</label>
                 <div className="grid grid-cols-2 gap-3 max-h-40 overflow-y-auto p-2 bg-slate-50 rounded-3xl shadow-inner">
                   {filaments.filter(f => f.status === 'actief').map(f => (
                     <button
@@ -699,7 +706,7 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
 
 function StockList({ filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState('add'); // 'add', 'edit', 'copy'
+  const [modalMode, setModalMode] = useState('add'); 
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({ 
     brand: '', 
@@ -707,13 +714,14 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
     colorName: '', 
     colorCode: '#9333ea', 
     totalWeight: 1000, 
-    price: '', // Stukprijs
-    totalPrice: '', // Totaalprijs (stuk * aantal)
-    quantity: 1
+    price: '', 
+    totalPrice: '', 
+    quantity: 1,
+    purchaseDate: new Date().toISOString().split('T')[0],
+    shopName: ''
   });
   const [showArchived, setShowArchived] = useState(false);
 
-  // Prijs logica: update totaalprijs als stukprijs of aantal verandert
   const updatePricePerPiece = (total, qty) => {
     if (!qty || qty <= 0) return 0;
     return Number((total / qty).toFixed(2));
@@ -756,10 +764,11 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
         colorName: formData.colorName,
         colorCode: formData.colorCode,
         totalWeight: Number(formData.totalWeight),
-        price: Number(formData.price)
+        price: Number(formData.price),
+        purchaseDate: formData.purchaseDate,
+        shopName: formData.shopName
       });
     } else {
-      // 'add' of 'copy' modus
       onAdd('filaments', { 
         ...formData, 
         usedWeight: 0, 
@@ -783,12 +792,16 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
         totalWeight: item.totalWeight,
         price: item.price,
         totalPrice: item.price,
-        quantity: 1
+        quantity: 1,
+        purchaseDate: item.purchaseDate || new Date().toISOString().split('T')[0],
+        shopName: item.shopName || ''
       });
     } else {
       setFormData({ 
         brand: '', materialType: '', colorName: '', colorCode: '#9333ea', 
-        totalWeight: 1000, price: '', totalPrice: '', quantity: 1 
+        totalWeight: 1000, price: '', totalPrice: '', quantity: 1,
+        purchaseDate: new Date().toISOString().split('T')[0],
+        shopName: ''
       });
     }
     setShowModal(true);
@@ -815,12 +828,12 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
         {activeFilaments.map(fil => {
           const rem = fil.totalWeight - (fil.usedWeight || 0);
-          const perc = (rem / fil.totalWeight) * 100;
+          const perc = (rem / (fil.totalWeight || 1)) * 100;
           const isLow = perc < 15 && fil.status === 'actief';
 
           return (
             <div key={fil.id} className={`bg-white p-10 rounded-[3.5rem] border-2 transition-all relative group shadow-sm hover:shadow-xl ${isLow ? 'border-rose-200 shadow-rose-50' : 'border-slate-100'}`}>
-              <div className="flex justify-between items-start mb-10">
+              <div className="flex justify-between items-start mb-6">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                      <h3 className="text-2xl font-black text-slate-900 leading-tight">{fil.brand}</h3>
@@ -830,15 +843,19 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
                     <div className="w-5 h-5 rounded-full border-2 border-slate-100 shadow-sm" style={{ backgroundColor: fil.colorCode }}></div>
                     {fil.colorName} • €{fil.price?.toFixed(2)}
                   </div>
+                  <div className="flex items-center gap-3 mt-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                     <span className="flex items-center gap-1"><Calendar size={12} className="text-purple-400"/> {fil.purchaseDate || 'N/A'}</span>
+                     {fil.shopName && <span className="flex items-center gap-1"><Store size={12} className="text-purple-400"/> {fil.shopName}</span>}
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => openModal('edit', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-none" title="Bewerken"><Edit3 size={18}/></button>
-                  <button onClick={() => openModal('copy', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-none" title="Kopiëren als template"><Copy size={18}/></button>
+                  <button onClick={() => openModal('copy', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-none" title="Kopiëren"><Copy size={18}/></button>
                   <button onClick={() => onDelete('filaments', fil.id)} className="text-slate-300 hover:text-rose-500 p-2 border-none" title="Verwijderen"><Trash2 size={18}/></button>
                   {fil.status === 'actief' ? (
-                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'leeg' })} className="text-slate-300 hover:text-purple-500 p-2 border-none" title="Markeer als leeg"><Archive size={18}/></button>
+                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'leeg' })} className="text-slate-300 hover:text-purple-500 p-2 border-none" title="Markeer leeg"><Archive size={18}/></button>
                   ) : (
-                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'actief' })} className="text-slate-300 hover:text-emerald-500 p-2 border-none" title="Terugzetten naar actief"><RefreshCw size={18}/></button>
+                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'actief' })} className="text-slate-300 hover:text-emerald-500 p-2 border-none" title="Reactiveren"><RefreshCw size={18}/></button>
                   )}
                 </div>
               </div>
@@ -868,7 +885,7 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xl flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh]">
             <h2 className="text-3xl font-black mb-10 tracking-tight uppercase text-slate-900">
-              {modalMode === 'edit' ? 'Rol Aanpassen' : modalMode === 'copy' ? 'Template Kopiëren' : 'Nieuwe Rol Toevoegen'}
+              {modalMode === 'edit' ? 'Rol Aanpassen' : modalMode === 'copy' ? 'Template Kopiëren' : 'Nieuwe Rol'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -893,6 +910,17 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3 tracking-widest">Besteldatum</label>
+                  <input required type="date" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner" value={formData.purchaseDate} onChange={e => setFormData({...formData, purchaseDate: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3 tracking-widest">Webshop</label>
+                  <input placeholder="Bijv. 123inkt, Bambu" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner uppercase" value={formData.shopName} onChange={e => setFormData({...formData, shopName: e.target.value})} />
+                </div>
+              </div>
+
               {modalMode !== 'edit' && (
                 <div className="space-y-2">
                   <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Aantal rollen (Bulk invoer)</label>
@@ -912,7 +940,7 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase text-slate-400 ml-3 tracking-widest">Kleur Visualisatie</label>
+                <label className="text-[11px] font-black uppercase text-slate-400 ml-3 tracking-widest">Kleur Kies</label>
                 <input required type="color" className="w-full h-[68px] p-2 bg-slate-50 rounded-3xl cursor-pointer shadow-inner" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} />
               </div>
 
