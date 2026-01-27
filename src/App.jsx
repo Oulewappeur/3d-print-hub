@@ -18,8 +18,7 @@ import {
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
-  signOut,
-  linkWithPopup
+  signOut
 } from 'firebase/auth';
 import { 
   Package, 
@@ -49,12 +48,11 @@ import {
   Lock,
   LogOut,
   LogIn,
-  User
+  User,
+  Info,
+  ChevronRight
 } from 'lucide-react';
 
-/**
- * FIREBASE CONFIGURATIE
- */
 const myFirebaseConfig = {
   apiKey: "AIzaSyBbwO5zFRzKg_TeFSTGjm_G7OPitUtnDo0",
   authDomain: "d-printer-orders-1b6f3.firebaseapp.com",
@@ -64,18 +62,6 @@ const myFirebaseConfig = {
   appId: "1:784230424225:web:abbfb3011e515e1f6d1ae0",
   measurementId: "G-RJW0M8NF7Y"
 };
-
-/**
- * EXCLUSIEVE BEVEILIGINGSRULES (Kopieer dit naar Firebase Console):
- * Vervang 'jouw-email@gmail.com' door je eigen Gmail adres.
- * * service cloud.firestore {
- * match /databases/{database}/documents {
- * match /artifacts/d-printer-orders-1b6f3/{document=**} {
- * allow read, write: if request.auth != null && request.auth.token.email == "jouw-email@gmail.com";
- * }
- * }
- * }
- */
 
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
   ? JSON.parse(__firebase_config) 
@@ -87,6 +73,10 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
+
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
 
 const TABS = {
   DASHBOARD: 'Dashboard',
@@ -107,6 +97,7 @@ export default function App() {
   const [settings, setSettings] = useState({ kwhPrice: 0.35, printerWattage: 150 });
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [authErrorCode, setAuthErrorCode] = useState(null);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -117,8 +108,7 @@ export default function App() {
           await signInAnonymously(auth);
         }
       } catch (err) {
-        console.error("Auth init error:", err);
-        setErrorMessage("Systeemfout bij het laden van sessie.");
+        setErrorMessage("Systeemfout bij laden sessie.");
         setLoading(false);
       }
     };
@@ -136,7 +126,6 @@ export default function App() {
 
     const getPath = (name) => collection(db, 'artifacts', hubId, 'public', 'data', name);
 
-    // Snapshot listeners met betere foutmeldingen
     const unsubOrders = onSnapshot(query(getPath('orders')), 
       (snapshot) => {
         setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -144,19 +133,19 @@ export default function App() {
       }, 
       (err) => {
         if (err.code === 'permission-denied') {
-          setErrorMessage("Geen toegang tot database. Log in met je geautoriseerde Google account.");
+          setErrorMessage("Toegang geweigerd door de database. Log in met antonmol.90@gmail.com.");
         }
       }
     );
 
     const unsubProducts = onSnapshot(query(getPath('products')), 
       (snapshot) => setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
-      (err) => console.error("Products error", err)
+      (err) => console.error(err)
     );
 
     const unsubFilaments = onSnapshot(query(getPath('filaments')), 
       (snapshot) => setFilaments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
-      (err) => console.error("Filaments error", err)
+      (err) => console.error(err)
     );
 
     const unsubSettings = onSnapshot(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), 
@@ -165,7 +154,6 @@ export default function App() {
         setLoading(false);
       }, 
       (err) => {
-        console.error("Settings error", err);
         setLoading(false);
       }
     );
@@ -181,17 +169,18 @@ export default function App() {
   const handleGoogleLogin = async () => {
     try {
       setErrorMessage(null);
-      // We proberen het anonieme account te koppelen aan Google, 
-      // of gewoon direct in te loggen als dat niet lukt.
+      setAuthErrorCode(null);
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
-      console.error("Google Login Error Object:", err);
+      setAuthErrorCode(err.code);
       if (err.code === 'auth/operation-not-allowed') {
-        setErrorMessage("Google Login staat uit in Firebase Console.");
+        setErrorMessage("Google Login is nog niet ingeschakeld in je Firebase Console.");
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setErrorMessage("Dit domein is niet geautoriseerd in Firebase.");
       } else if (err.code === 'auth/popup-blocked') {
-        setErrorMessage("Pop-up geblokkeerd door browser.");
+        setErrorMessage("De browser blokkeerde de pop-up. Sta pop-ups toe.");
       } else if (err.code === 'auth/popup-closed-by-user') {
-        setErrorMessage("Inlogvenster gesloten.");
+        setErrorMessage("Het inlogvenster werd gesloten.");
       } else {
         setErrorMessage(`Inloggen mislukt: ${err.message}`);
       }
@@ -200,7 +189,6 @@ export default function App() {
 
   const handleLogout = () => signOut(auth);
 
-  // Database Interacties
   const addItem = async (coll, data) => {
     if (!user) return;
     try {
@@ -217,37 +205,31 @@ export default function App() {
         });
       }
     } catch (e) {
-      if (e.code === 'permission-denied') setErrorMessage("Je hebt geen rechten om deze actie uit te voeren.");
+      if (e.code === 'permission-denied') setErrorMessage("Je hebt geen rechten.");
     }
   };
 
   const updateItem = async (coll, id, data) => {
     if (!user) return;
-    try {
-      await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data);
-    } catch (e) { console.error(e); }
+    try { await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data); } catch (e) {}
   };
 
   const deleteItem = async (coll, id) => {
     if (!user) return;
-    try {
-      await deleteDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id));
-    } catch (e) { console.error(e); }
+    try { await deleteDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id)); } catch (e) {}
   };
 
   const saveSettings = async (data) => {
     if (!user) return;
-    try {
-      await setDoc(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), data);
-    } catch (e) { console.error(e); }
+    try { await setDoc(doc(db, 'artifacts', hubId, 'public', 'data', 'settings', 'global'), data); } catch (e) {}
   };
 
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-white font-sans">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-          <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Systeem Initialiseren</p>
+          <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Verbinding maken...</p>
         </div>
       </div>
     );
@@ -255,10 +237,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#FDFCFE] flex flex-col md:flex-row font-sans text-slate-900">
-      {/* Zijbalk Navigatie */}
-      <nav className="w-full md:w-72 bg-white border-r border-slate-200 p-8 flex flex-col gap-2 shadow-sm z-20">
+      <nav className="w-full md:w-80 bg-white border-r border-slate-200 p-8 flex flex-col gap-2 shadow-sm z-20">
         <div className="text-2xl font-black text-purple-600 mb-12 flex items-center gap-3">
-          <div className="p-2.5 bg-purple-50 rounded-2xl text-purple-600 shadow-sm">
+          <div className="p-2.5 bg-purple-50 rounded-2xl text-purple-600">
             <Printer size={28} strokeWidth={3} />
           </div>
           3D Hub
@@ -288,82 +269,114 @@ export default function App() {
           })}
         </div>
         
-        {/* Account Sectie */}
-        <div className="mt-auto pt-8 border-t border-slate-100 space-y-4">
+        <div className="mt-auto pt-8 border-t border-slate-100 space-y-6">
           {(!user || user.isAnonymous) ? (
-            <button 
-              onClick={handleGoogleLogin}
-              className="w-full flex items-center justify-center gap-3 px-5 py-4 rounded-2xl bg-white border-2 border-slate-100 text-slate-700 font-black text-xs hover:border-purple-200 hover:bg-purple-50 transition-all shadow-sm group"
-            >
-              <div className="w-4 h-4 flex items-center justify-center overflow-hidden">
-                <svg viewBox="0 0 48 48" className="w-full h-full"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24s.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
-              </div>
-              INLOGGEN MET GOOGLE
-            </button>
+            <div className="space-y-4">
+              <button 
+                onClick={handleGoogleLogin}
+                className="w-full flex items-center justify-center gap-4 px-6 py-5 rounded-[2rem] bg-white border-2 border-slate-200 text-slate-800 font-black text-xs hover:border-purple-400 hover:bg-purple-50 transition-all shadow-md active:scale-95 group"
+              >
+                <div className="w-5 h-5 flex items-center justify-center overflow-hidden shrink-0">
+                  <svg viewBox="0 0 48 48" className="w-full h-full"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24s.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+                </div>
+                ANTON, KLIK HIER OM IN TE LOGGEN
+                <ChevronRight size={16} className="ml-auto opacity-0 group-hover:opacity-100 transition-all"/>
+              </button>
+            </div>
           ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 px-2">
-                <div className="w-10 h-10 rounded-full bg-purple-100 border-2 border-white shadow-sm flex items-center justify-center overflow-hidden">
-                  {user.photoURL ? <img src={user.photoURL} alt="Avatar" /> : <User size={20} className="text-purple-600" />}
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 bg-purple-50 p-5 rounded-[2rem] border border-purple-100 shadow-sm">
+                <div className="w-12 h-12 rounded-full bg-white border-2 border-purple-200 shadow-inner flex items-center justify-center overflow-hidden shrink-0">
+                  {user.photoURL ? <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" /> : <User size={24} className="text-purple-600" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Ingelogd als</p>
-                  <p className="text-xs font-bold text-slate-800 truncate">{user.displayName || user.email}</p>
+                  <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest leading-none mb-1.5">Eigenaar</p>
+                  <p className="text-xs font-black text-slate-800 truncate tracking-tight">{user.displayName || user.email}</p>
                 </div>
               </div>
               <button 
                 onClick={handleLogout}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-50 text-slate-500 font-black text-[10px] hover:bg-rose-50 hover:text-rose-600 transition-all border-none"
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-slate-50 text-slate-400 font-black text-[10px] hover:bg-rose-50 hover:text-rose-600 transition-all border-none"
               >
-                <LogOut size={14} /> UITLOGGEN
+                <LogOut size={14} /> AFGEMELDEN
               </button>
             </div>
           )}
 
-          <div className="p-5 bg-slate-50 rounded-[2rem] border border-slate-100">
-            <div className="flex items-center justify-center gap-2 mb-3">
+          <div className={`p-6 rounded-[2.5rem] border transition-all ${(!user || user.isAnonymous) ? 'bg-orange-50 border-orange-100 shadow-inner' : 'bg-emerald-50 border-emerald-100'}`}>
+            <div className="flex items-center justify-center gap-2.5 mb-2">
               {(!user || user.isAnonymous) ? (
                 <>
-                  <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
+                  <Lock size={12} className="text-orange-500" />
                   <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">Beperkte Sessie</span>
                 </>
               ) : (
                 <>
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-green-600">Beveiligde Verbinding</span>
+                  <ShieldCheck size={12} className="text-emerald-600" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Volledige Toegang</span>
                 </>
               )}
             </div>
             
             {errorMessage && (
-              <div className="p-3 bg-red-100 text-red-600 rounded-2xl text-[9px] font-bold leading-relaxed flex items-start gap-2 border border-red-200">
-                <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-                <span>{errorMessage}</span>
+              <div className="mt-3 p-4 bg-white/80 text-rose-600 rounded-2xl text-[10px] font-bold leading-relaxed flex items-start gap-3 border border-rose-100 shadow-sm">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5 text-rose-500" />
+                <div className="flex-1">
+                  <span>{errorMessage}</span>
+                  {authErrorCode && (
+                    <div className="mt-1.5 pt-1.5 border-t border-rose-50 text-[8px] font-mono text-rose-300">
+                      Code: {authErrorCode}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-            
-            <p className="text-[9px] text-slate-300 mt-4 text-center font-mono uppercase tracking-tighter">ID: {hubId.substring(0, 16)}...</p>
           </div>
         </div>
       </nav>
 
       <main className="flex-1 p-6 md:p-14 overflow-auto bg-[#FDFCFE]">
-        <header className="mb-12">
-          <h1 className="text-5xl font-black text-slate-900 tracking-tighter uppercase italic">{activeTab}</h1>
-          <div className="h-1.5 w-20 bg-purple-600 mt-4 rounded-full"></div>
+        <header className="mb-12 flex justify-between items-start">
+          <div>
+            <h1 className="text-5xl font-black text-slate-900 tracking-tighter uppercase italic">{activeTab}</h1>
+            <div className="h-1.5 w-24 bg-purple-600 mt-4 rounded-full shadow-lg shadow-purple-100"></div>
+          </div>
+          {(!user || user.isAnonymous) && (
+            <div className="bg-white text-orange-600 px-5 py-3 rounded-[1.5rem] text-[10px] font-black uppercase flex items-center gap-2 border border-orange-100 shadow-sm">
+              <Info size={14}/> Preview Modus: Inloggen Vereist
+            </div>
+          )}
         </header>
 
-        {activeTab === TABS.DASHBOARD && <Dashboard orders={orders} products={products} filaments={filaments} settings={settings} />}
-        {activeTab === TABS.ORDERS && <OrderList orders={orders} products={products} filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
-        {activeTab === TABS.CATALOG && <ProductList products={products} filaments={filaments} settings={settings} onAdd={addItem} onDelete={deleteItem} />}
-        {activeTab === TABS.STOCK && <StockList filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
-        {activeTab === TABS.SETTINGS && <SettingsPanel settings={settings} onSave={saveSettings} />}
+        {(user && !user.isAnonymous) || orders.length > 0 ? (
+          <>
+            {activeTab === TABS.DASHBOARD && <Dashboard orders={orders} products={products} filaments={filaments} settings={settings} />}
+            {activeTab === TABS.ORDERS && <OrderList orders={orders} products={products} filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
+            {activeTab === TABS.CATALOG && <ProductList products={products} filaments={filaments} settings={settings} onAdd={addItem} onDelete={deleteItem} />}
+            {activeTab === TABS.STOCK && <StockList filaments={filaments} onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />}
+            {activeTab === TABS.SETTINGS && <SettingsPanel settings={settings} onSave={saveSettings} />}
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-[55vh] text-center max-w-xl mx-auto bg-white p-14 rounded-[4rem] border border-slate-100 shadow-2xl shadow-slate-100">
+            <div className="bg-purple-50 p-8 rounded-[3rem] mb-10 text-purple-600">
+               <ShieldCheck size={72} strokeWidth={1.5} />
+            </div>
+            <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tight mb-4">Welkom Anton</h2>
+            <p className="text-slate-500 font-medium leading-relaxed mb-10">
+              Deze database is exclusief beveiligd voor jouw account. Log in met <strong>antonmol.90@gmail.com</strong> om je Filamenten, Producten en Bestellingen te beheren.
+            </p>
+            <button 
+              onClick={handleGoogleLogin}
+              className="bg-slate-900 text-white px-12 py-6 rounded-[2rem] font-black text-sm shadow-2xl shadow-slate-200 hover:bg-purple-600 transition-all border-none flex items-center gap-3"
+            >
+              NU INLOGGEN MET GOOGLE <ChevronRight size={18}/>
+            </button>
+          </div>
+        )}
       </main>
     </div>
   );
 }
-
-// --- Subcomponents ---
 
 function Dashboard({ orders, products, filaments, settings }) {
   const stats = useMemo(() => {
@@ -481,7 +494,7 @@ function Dashboard({ orders, products, filaments, settings }) {
 function StatCard({ title, value, icon, color }) {
   return (
     <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100 flex flex-col items-center text-center gap-6 hover:shadow-2xl hover:shadow-purple-100/30 transition-all duration-500 group">
-      <div className={`p-5 ${color} rounded-[2rem] transition-transform group-hover:scale-110`}>{icon}</div>
+      <div className={`p-5 ${color} rounded-[2rem] transition-transform group-hover:scale-110 shadow-sm`}>{icon}</div>
       <div>
         <p className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em] mb-2">{title}</p>
         <p className="text-3xl font-black text-slate-900 leading-none tracking-tighter italic">{value}</p>
@@ -493,14 +506,8 @@ function StatCard({ title, value, icon, color }) {
 function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ 
-    customer: '', 
-    messengerLink: '', 
-    productId: '', 
-    price: '', 
-    quantity: 1, 
-    status: 'In de wacht', 
-    comments: '',
-    orderDate: new Date().toISOString().split('T')[0]
+    customer: '', messengerLink: '', productId: '', price: '', quantity: 1, 
+    status: 'In de wacht', comments: '', orderDate: new Date().toISOString().split('T')[0]
   });
 
   const handleSubmit = (e) => {
@@ -708,7 +715,7 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
 
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-2xl flex items-center justify-center p-6 z-50">
-          <div className="bg-white rounded-[4rem] p-12 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh] border border-slate-100">
+          <div className="bg-white rounded-[4rem] p-12 w-full max-xl shadow-2xl overflow-y-auto max-h-[90vh] border border-slate-100">
             <h2 className="text-4xl font-black mb-12 tracking-tighter uppercase text-slate-900 italic">Catalogus Item</h2>
             <form onSubmit={handleSubmit} className="space-y-8">
               <div className="space-y-3">
