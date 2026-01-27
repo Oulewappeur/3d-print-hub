@@ -46,7 +46,8 @@ import {
   Search,
   MessageCircle,
   FileCode,
-  Upload
+  Upload,
+  Activity
 } from 'lucide-react';
 
 // Firebase Configuratie
@@ -60,12 +61,10 @@ const myFirebaseConfig = {
   measurementId: "G-RJW0M8NF7Y"
 };
 
-// Gebruik de omgevingsconfiguratie indien beschikbaar (voor Canvas), anders jouw eigen config
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
   ? JSON.parse(__firebase_config) 
   : myFirebaseConfig;
 
-// Gebruik het dynamische appId van de omgeving, of jouw eigen project-ID als fallback
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'd-printer-orders-1b6f3';
 
 const app = initializeApp(firebaseConfig);
@@ -82,7 +81,6 @@ const TABS = {
 
 const ORDER_STATUSES = ['In de wacht', 'Printen', 'Gereed', 'Afgerond'];
 
-// G-code Parser Utility
 const parseGCodeMetadata = (text) => {
   const result = { time: 0, weight: 0, multiMaterial: [] };
   const timeMatch = text.match(/estimated printing time.*=\s*(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?/i);
@@ -119,7 +117,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // STAP 1: Authenticatie (MANDATORY RULE 3)
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -135,17 +132,14 @@ export default function App() {
       }
     };
     initAuth();
-    
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
     });
     return () => unsubscribe();
   }, []);
 
-  // STAP 2: Data ophalen (MANDATORY RULE 3)
   useEffect(() => {
     if (!user) return;
-
     const getPath = (name) => collection(db, 'artifacts', appId, 'public', 'data', name);
 
     const unsubOrders = onSnapshot(query(getPath('orders')), 
@@ -189,11 +183,22 @@ export default function App() {
   const addItem = async (coll, data) => {
     if (!user) return;
     try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', coll), { 
-        ...data, 
-        status: data.status || 'actief', 
-        createdAt: new Date().toISOString() 
-      });
+      if (coll === 'filaments' && data.quantity > 1) {
+        const { quantity, ...singleData } = data;
+        for (let i = 0; i < quantity; i++) {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', coll), { 
+            ...singleData, 
+            status: 'actief', 
+            createdAt: new Date().toISOString() 
+          });
+        }
+      } else {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', coll), { 
+          ...data, 
+          status: data.status || 'actief', 
+          createdAt: new Date().toISOString() 
+        });
+      }
     } catch (e) {
       console.error(e);
     }
@@ -272,7 +277,7 @@ export default function App() {
           <div className="mt-auto p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-[10px] font-bold flex flex-col gap-2">
             <div className="flex items-start gap-2">
                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-               <span>Toegangfout in Canvas</span>
+               <span>Systeemmelding</span>
             </div>
             <p className="font-medium opacity-80">{errorMessage}</p>
           </div>
@@ -299,10 +304,11 @@ export default function App() {
 
 function Dashboard({ orders, products, filaments, settings }) {
   const stats = useMemo(() => {
-    const openOrders = orders.filter(o => o.status !== 'Afgerond').length;
+    const openOrders = orders.filter(o => o.status !== 'Afgerond');
     let totalRevenue = 0;
     let totalCost = 0;
 
+    // Bereken algemene stats
     orders.forEach(order => {
       const qty = Number(order.quantity) || 1;
       totalRevenue += (Number(order.price) || 0) * qty;
@@ -319,8 +325,25 @@ function Dashboard({ orders, products, filaments, settings }) {
       }
     });
 
+    // Bereken prognose per materiaal type
+    const prognosis = {};
+    openOrders.forEach(order => {
+      const prod = products.find(p => p.id === order.productId);
+      if (prod) {
+        const material = prod.materialType || "PLA"; // Fallback naar PLA
+        if (!prognosis[material]) prognosis[material] = { needed: 0, available: 0 };
+        prognosis[material].needed += (prod.weight * (Number(order.quantity) || 1));
+      }
+    });
+
+    filaments.filter(f => f.status === 'actief').forEach(f => {
+      const material = f.materialType || "PLA";
+      if (!prognosis[material]) prognosis[material] = { needed: 0, available: 0 };
+      prognosis[material].available += (f.totalWeight - (f.usedWeight || 0));
+    });
+
     const criticalFilaments = filaments.filter(f => f.status === 'actief' && ((f.totalWeight - (f.usedWeight || 0)) / (f.totalWeight || 1)) < 0.15);
-    return { openOrders, totalRevenue, totalProfit: totalRevenue - totalCost, criticalFilaments };
+    return { openOrders: openOrders.length, totalRevenue, totalProfit: totalRevenue - totalCost, criticalFilaments, prognosis };
   }, [orders, products, filaments, settings]);
 
   return (
@@ -333,6 +356,44 @@ function Dashboard({ orders, products, filaments, settings }) {
           <AlertTriangle size={20} className={stats.criticalFilaments.length > 0 ? "text-rose-500 animate-pulse" : "text-slate-300"} />
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Voorraad Alerts</p>
           <p className="text-2xl font-black text-slate-900 italic">{stats.criticalFilaments.length}</p>
+        </div>
+      </div>
+
+      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-3 mb-8">
+           <Activity size={24} className="text-purple-600" />
+           <h2 className="text-xl font-black italic uppercase tracking-tighter">Materiaal Prognose</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {Object.entries(stats.prognosis).map(([mat, data]) => {
+            const shortage = data.needed > data.available;
+            return (
+              <div key={mat} className={`p-6 rounded-3xl border ${shortage ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'}`}>
+                <p className="text-sm font-black uppercase text-slate-500 mb-4 tracking-widest">{mat}</p>
+                <div className="space-y-3">
+                  <div className="flex justify-between text-xs font-bold">
+                    <span className="text-slate-400 uppercase">Nodig</span>
+                    <span className="text-slate-900">{Math.round(data.needed)}g</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold">
+                    <span className="text-slate-400 uppercase">Beschikbaar</span>
+                    <span className={shortage ? 'text-rose-600' : 'text-emerald-600'}>{Math.round(data.available)}g</span>
+                  </div>
+                  <div className="h-2 w-full bg-white rounded-full overflow-hidden shadow-inner mt-4">
+                    <div 
+                      className={`h-full transition-all duration-500 ${shortage ? 'bg-rose-500' : 'bg-purple-500'}`} 
+                      style={{ width: `${Math.min(100, (data.available / (data.needed || 1)) * 100)}%` }}
+                    ></div>
+                  </div>
+                  {shortage && (
+                    <p className="text-[10px] font-black uppercase text-rose-600 mt-2 flex items-center gap-1 italic">
+                      <AlertTriangle size={12} /> Tekort van {Math.round(data.needed - data.available)}g
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -361,14 +422,9 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
 
   return (
     <div className="space-y-6">
-      <button 
-        onClick={() => setShowModal(true)} 
-        className="text-white px-10 py-4 rounded-2xl flex items-center gap-3 font-bold shadow-xl border-none active:scale-95 transition-all uppercase text-sm italic" 
-        style={{ backgroundColor: '#9333ea' }}
-      >
+      <button onClick={() => setShowModal(true)} className="text-white px-10 py-4 rounded-2xl flex items-center gap-3 font-bold shadow-xl border-none outline-none active:scale-95 transition-all uppercase text-sm italic" style={{ backgroundColor: '#9333ea' }}>
         <Plus size={20} strokeWidth={3} /> Bestelling Invoeren
       </button>
-
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left min-w-[600px]">
           <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b border-slate-100">
@@ -386,13 +442,9 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
                   <div className="flex items-center gap-3">
                     <div>
                       <p className="text-slate-900">{order.customer}</p>
-                      <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">{order.orderDate}</p>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider">{order.orderDate}</p>
                     </div>
-                    {order.messengerLink && (
-                      <a href={order.messengerLink} target="_blank" rel="noreferrer" className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-all">
-                        <MessageCircle size={18} />
-                      </a>
-                    )}
+                    {order.messengerLink && <a href={order.messengerLink} target="_blank" rel="noreferrer" className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100"><MessageCircle size={18} /></a>}
                   </div>
                 </td>
                 <td className="px-8 py-6">
@@ -400,11 +452,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
                   <p className="text-[10px] text-purple-500 font-black mt-1 uppercase">€{(order.price * order.quantity).toFixed(2)} ({order.quantity}x)</p>
                 </td>
                 <td className="px-8 py-6">
-                  <select 
-                    value={order.status} 
-                    onChange={(e) => onUpdate('orders', order.id, { status: e.target.value })} 
-                    className="bg-transparent border-0 text-[10px] font-black uppercase text-purple-600 outline-none cursor-pointer"
-                  >
+                  <select value={order.status} onChange={(e) => onUpdate('orders', order.id, { status: e.target.value })} className="bg-transparent border-0 text-[10px] font-black uppercase text-purple-600 outline-none cursor-pointer">
                     {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </td>
@@ -416,7 +464,6 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
           </tbody>
         </table>
       </div>
-
       {showModal && (
         <Modal title="Nieuwe Bestelling" onClose={() => setShowModal(false)}>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -424,22 +471,19 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
               <Input label="Klant Naam" value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} required />
               <Input label="Datum" type="date" value={formData.orderDate} onChange={e => setFormData({...formData, orderDate: e.target.value})} required />
             </div>
-            <Input label="Messenger Link" placeholder="Plak link naar gesprek..." value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
-            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-slate-400 ml-3 block">Product</label>
-              <select required className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold shadow-inner" value={formData.productId} onChange={e => {
-                const p = products.find(prod => prod.id === e.target.value);
-                setFormData({...formData, productId: e.target.value, price: p?.suggestedPrice || ''});
-              }}>
-                <option value="">Selecteer product...</option>
-                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
+            <Input label="Messenger Link" placeholder="Social media link..." value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
+            <select required className="w-full p-4 bg-slate-50 rounded-2xl outline-none border-none font-bold shadow-inner" value={formData.productId} onChange={e => {
+              const p = products.find(prod => prod.id === e.target.value);
+              setFormData({...formData, productId: e.target.value, price: p?.suggestedPrice || ''});
+            }}>
+              <option value="">Selecteer product...</option>
+              {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
             <div className="grid grid-cols-2 gap-4">
               <Input label="Aantal" type="number" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />
               <Input label="Prijs p/s (€)" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required />
             </div>
-            <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl border-none outline-none active:scale-95 transition-all" style={{ backgroundColor: '#9333ea' }}>Opslaan</button>
+            <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl border-none outline-none active:scale-95 transition-all" style={{ backgroundColor: '#9333ea' }}>Bestelling Opslaan</button>
           </form>
         </Modal>
       )}
@@ -449,7 +493,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
 
 function ProductList({ products, filaments, onAdd, onDelete }) {
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({ name: '', weight: '', printTime: '', filamentIds: [], suggestedPrice: '' });
+  const [formData, setFormData] = useState({ name: '', weight: '', printTime: '', filamentIds: [], suggestedPrice: '', materialType: 'PLA' });
   const [parsing, setParsing] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -488,7 +532,7 @@ function ProductList({ products, filaments, onAdd, onDelete }) {
         {products.map(p => (
           <div key={p.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative group hover:shadow-xl transition-all">
             <h3 className="text-xl font-black italic uppercase text-slate-800">{p.name}</h3>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6">{p.weight}g • {p.printTime}m</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6">{p.weight}g • {p.printTime}m • {p.materialType || 'PLA'}</p>
             <div className="flex flex-wrap gap-2 mb-8">
               {p.filamentIds?.map(fid => {
                 const f = filaments.find(fil => fil.id === fid);
@@ -521,8 +565,9 @@ function ProductList({ products, filaments, onAdd, onDelete }) {
               <Input label="Gewicht (g)" type="number" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} required />
               <Input label="Print Tijd (min)" type="number" value={formData.printTime} onChange={e => setFormData({...formData, printTime: e.target.value})} required />
             </div>
+            <Input label="Materiaal Type" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required />
             <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase text-slate-400 ml-3">Gekoppelde Filamenten</label>
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-3">Koppel een specifieke rol (optioneel)</label>
               <div className="max-h-48 overflow-y-auto p-4 bg-slate-50 rounded-[2rem] space-y-4 shadow-inner">
                 {groupedFilaments.map(g => g.rolls.map(roll => (
                   <button key={roll.id} type="button" onClick={() => toggleFilament(roll.id)} className={`p-4 w-full mb-2 rounded-2xl text-[10px] font-black uppercase flex items-center gap-3 transition-all ${formData.filamentIds.includes(roll.id) ? 'text-white' : 'bg-white text-slate-500'}`} style={{ backgroundColor: formData.filamentIds.includes(roll.id) ? '#9333ea' : undefined }}>
@@ -545,7 +590,7 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
   const [expanded, setExpanded] = useState({});
   const [archived, setArchived] = useState(false);
-  const [formData, setFormData] = useState({ brand: '', materialType: '', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shopName: '', quantity: 1 });
+  const [formData, setFormData] = useState({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shopName: '', quantity: 1 });
 
   const grouped = useMemo(() => {
     const res = {};
@@ -570,17 +615,17 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
           <Plus size={20} className="inline mr-2" /> Rol Toevoegen
         </button>
         <button onClick={() => setArchived(!archived)} className="text-[10px] font-black uppercase text-slate-400 border-none bg-transparent flex items-center gap-2 hover:text-purple-600 transition-colors">
-          <Archive size={14} /> {archived ? 'Actief' : 'Archief'}
+          <Archive size={14} /> {archived ? 'Toon Actieve Voorraad' : 'Toon Archief (Lege Rollen)'}
         </button>
       </div>
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left min-w-[600px]">
           <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b border-slate-100">
-            <tr><th className="px-8 py-5">Kleur</th><th className="px-8 py-5">Omschrijving</th><th className="px-8 py-5">Voorraad</th><th className="px-8 py-5 text-right">Actie</th></tr>
+            <tr><th className="px-8 py-5">Kleur</th><th className="px-8 py-5">Omschrijving</th><th className="px-8 py-5">Huidige Voorraad</th><th className="px-8 py-5 text-right">Beheer</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {grouped.map(g => {
-              const k = `${g.brand}-${g.colorName}`;
+              const k = `${g.brand}-${g.materialType}-${g.colorName}`;
               const isEx = expanded[k];
               const rem = g.rolls.reduce((a, r) => a + (r.totalWeight - (r.usedWeight || 0)), 0);
               return (
@@ -588,20 +633,48 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                   <tr onClick={() => setExpanded(p => ({...p, [k]: !p[k]}))} className="cursor-pointer hover:bg-slate-50/50">
                     <td className="px-8 py-6"><div className="w-8 h-8 rounded-xl border border-slate-200 shadow-sm" style={{ backgroundColor: g.colorCode }}></div></td>
                     <td className="px-8 py-6"><p className="font-bold text-slate-900">{g.brand} {g.materialType}</p><p className="text-[10px] text-slate-400 uppercase mt-1">{g.colorName}</p></td>
-                    <td className="px-8 py-6"><p className="font-black text-slate-800 text-lg italic">{Math.round(rem)}g</p><p className="text-[9px] text-slate-400 uppercase">{g.rolls.length} rollen</p></td>
+                    <td className="px-8 py-6">
+                      <p className="font-black text-slate-800 text-lg italic">{Math.round(rem)}g</p>
+                      <p className="text-[9px] text-slate-400 uppercase tracking-widest">{g.rolls.length} rollen beschikbaar</p>
+                    </td>
                     <td className="px-8 py-6 text-right">{isEx ? <ChevronDown size={22} className="text-purple-600" /> : <ChevronRight size={22} className="text-slate-300" />}</td>
                   </tr>
                   {isEx && g.rolls.map(r => (
                     <tr key={r.id} className="bg-slate-50/30 border-l-[6px] border-purple-500 text-xs">
-                      <td colSpan="2" className="px-12 py-4"><p className="font-black text-slate-500 uppercase">#{r.id.slice(-4)} • {r.purchaseDate}</p><p className="text-slate-400">{r.shopName}</p></td>
-                      <td className="px-8 py-4"><p className="font-black italic">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</p></td>
-                      <td className="px-8 py-4 text-right flex items-center justify-end gap-2">
-                        <div className="flex bg-white rounded-xl border border-slate-200 p-1 px-3 items-center shadow-sm focus-within:ring-2 focus-within:ring-purple-200">
-                          <Hash size={12} className="text-purple-500 mr-2" />
-                          <input type="number" placeholder="Invoer" className="w-10 text-[10px] font-bold outline-none border-none p-0 bg-transparent ring-0" onKeyDown={e => { if (e.key === 'Enter' && e.target.value) { onUpdate('filaments', r.id, { usedWeight: (r.usedWeight || 0) + Number(e.target.value) }); e.target.value = ''; } }} />
+                      <td colSpan="2" className="px-12 py-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`w-2 h-2 rounded-full ${r.status === 'actief' ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
+                          <p className="font-black text-slate-500 uppercase tracking-widest">Rol #{r.id.slice(-4)}</p>
                         </div>
-                        <button onClick={e => { e.stopPropagation(); onDelete('filaments', r.id); }} className="text-slate-200 hover:text-rose-500 p-2"><Trash2 size={16}/></button>
-                        <button onClick={e => { e.stopPropagation(); onUpdate('filaments', r.id, { status: archived ? 'actief' : 'leeg' }); }} className="text-slate-200 hover:text-purple-600 p-2">{archived ? <RefreshCw size={16}/> : <Archive size={16}/>}</button>
+                        <p className="text-slate-400 font-bold italic">{r.shopName || 'Winkel onbekend'} • {r.purchaseDate}</p>
+                      </td>
+                      <td className="px-8 py-4">
+                        <p className="font-black italic text-slate-700">{Math.round(r.totalWeight - (r.usedWeight || 0))}g over / {r.totalWeight}g</p>
+                        <p className="text-[9px] font-bold text-purple-400 uppercase">Kostprijs: €{r.price.toFixed(2)}</p>
+                      </td>
+                      <td className="px-8 py-4 text-right flex items-center justify-end gap-2">
+                        <div className="flex bg-white rounded-xl border border-slate-200 p-1 px-3 items-center shadow-sm">
+                          <Hash size={12} className="text-purple-500 mr-2" />
+                          <input 
+                            type="number" 
+                            placeholder="Grams" 
+                            className="w-12 text-[10px] font-bold outline-none border-none p-0 bg-transparent ring-0" 
+                            onKeyDown={e => { 
+                              if (e.key === 'Enter' && e.target.value) { 
+                                onUpdate('filaments', r.id, { usedWeight: (r.usedWeight || 0) + Number(e.target.value) }); 
+                                e.target.value = ''; 
+                              } 
+                            }} 
+                          />
+                        </div>
+                        <button 
+                          onClick={e => { e.stopPropagation(); onUpdate('filaments', r.id, { status: r.status === 'actief' ? 'leeg' : 'actief' }); }} 
+                          className={`p-2 transition-colors ${r.status === 'actief' ? 'text-slate-200 hover:text-purple-600' : 'text-purple-600 hover:text-purple-800'}`}
+                          title={r.status === 'actief' ? "Zet in archief" : "Zet op actief"}
+                        >
+                          {r.status === 'actief' ? <Archive size={18}/> : <RefreshCw size={18}/>}
+                        </button>
+                        <button onClick={e => { e.stopPropagation(); onDelete('filaments', r.id); }} className="text-slate-200 hover:text-rose-500 p-2"><Trash2 size={18}/></button>
                       </td>
                     </tr>
                   ))}
@@ -611,13 +684,25 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
           </tbody>
         </table>
       </div>
-      {showModal && <Modal title="Rol Toevoegen" onClose={() => setShowModal(false)}>
+      {showModal && <Modal title="Filament Toevoegen" onClose={() => setShowModal(false)}>
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-2 gap-4"><Input label="Merk" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} required /><Input label="Materiaal" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required /></div>
-          <div className="grid grid-cols-2 gap-4"><Input label="Kleur" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[10px] font-black uppercase text-slate-400 ml-3 mb-1 block">Kleur Kies</label><input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
-          <div className="grid grid-cols-2 gap-4"><Input label="Prijs (€)" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required /><Input label="Gewicht (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required /></div>
-          <Input label="Aantal" type="number" min="1" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />
-          <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl border-none outline-none" style={{ backgroundColor: '#9333ea' }}>Opslaan</button>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Merk" placeholder="Bijv. Bambu Lab" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} required />
+            <Input label="Materiaal" placeholder="PLA / PETG / TPU" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Kleur Naam" placeholder="Lava Red" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required />
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-3 mb-1 block">Hex Kleur</label>
+              <input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Prijs p/s (€)" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required />
+            <Input label="Gewicht p/s (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required />
+          </div>
+          <Input label="Aantal rollen (Bulk)" type="number" min="1" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />
+          <button type="submit" className="w-full py-5 text-white rounded-2xl font-black italic uppercase shadow-xl" style={{ backgroundColor: '#9333ea' }}>Voorraad Invoeren</button>
         </form>
       </Modal>}
     </div>
@@ -649,7 +734,10 @@ function Modal({ title, children, onClose }) {
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-6 z-50">
       <div className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh] border border-white">
-        <div className="flex justify-between items-center mb-10"><h2 className="text-3xl font-black italic uppercase text-slate-900">{title}</h2><button onClick={onClose} className="text-slate-300 hover:text-slate-500 border-none bg-transparent outline-none"><Plus size={32} className="rotate-45" /></button></div>
+        <div className="flex justify-between items-center mb-10">
+          <h2 className="text-3xl font-black italic uppercase text-slate-900">{title}</h2>
+          <button onClick={onClose} className="text-slate-300 hover:text-slate-500 border-none bg-transparent outline-none"><Plus size={32} className="rotate-45" /></button>
+        </div>
         {children}
       </div>
     </div>
