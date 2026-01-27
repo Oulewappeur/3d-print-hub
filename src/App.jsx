@@ -168,7 +168,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#FDFCFE] flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
       <nav className="w-full md:w-72 bg-white border-r border-slate-100 p-6 flex flex-col gap-2 z-20 shadow-sm overflow-y-auto">
-        <div className="text-xl font-black text-purple-600 mb-10 flex items-center gap-3 px-2 italic">
+        <div className="text-xl font-black text-purple-600 mb-10 flex items-center gap-3 px-2 italic text-balance">
           <div className="p-2 bg-purple-600 rounded-xl text-white shadow-md shadow-purple-100"><Printer size={20} strokeWidth={3} /></div>
           Rosevalley 3D Print Hub
         </div>
@@ -206,6 +206,7 @@ function Dashboard({ orders, products, filaments, settings }) {
     let revenue = 0;
     let cost = 0;
     let pendingRevenue = 0;
+    let totalFilamentWeight = 0;
     const productStats = {};
     const filamentNeeds = {};
     
@@ -238,15 +239,15 @@ function Dashboard({ orders, products, filaments, settings }) {
       (o.items || []).forEach(item => {
         if (item.status !== 'Afgerond') {
           pendingRevenue += (Number(item.price) || 0) * (Number(item.quantity) || 0);
-        }
-
-        // Filament prognose enkel voor "In de wacht"
-        if (item.status === 'In de wacht') {
+          
+          // Filament prognose voor alle openstaande items
           const p = products.find(prod => prod.id === item.productId);
           if (p && p.filaments) {
             p.filaments.forEach(f => {
+              const needed = (f.weight * (Number(item.quantity) || 0));
               if (!filamentNeeds[f.key]) filamentNeeds[f.key] = 0;
-              filamentNeeds[f.key] += (f.weight * (Number(item.quantity) || 0));
+              filamentNeeds[f.key] += needed;
+              totalFilamentWeight += needed;
             });
           }
         }
@@ -257,6 +258,7 @@ function Dashboard({ orders, products, filaments, settings }) {
       revenue, 
       profit: revenue - cost, 
       pendingRevenue,
+      totalFilamentWeight,
       openOrderCount: activeOrders.length, 
       completedOrderCount: completedOrders.length,
       productStats: Object.values(productStats).sort((a,b) => b.revenue - a.revenue),
@@ -264,17 +266,18 @@ function Dashboard({ orders, products, filaments, settings }) {
         key,
         weight,
         info: filaments.find(f => `${f.brand}-${f.materialType}-${f.colorName}` === key)
-      }))
+      })).sort((a,b) => b.weight - a.weight)
     };
   }, [orders, products, filaments, settings]);
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
         <StatCard title="Gerealiseerde Omzet" value={`€${stats.revenue.toFixed(2)}`} color="text-purple-600" />
         <StatCard title="Gerealiseerde Winst" value={`€${stats.profit.toFixed(2)}`} color="text-emerald-600" />
         <StatCard title="Te Realiseren Omzet" value={`€${stats.pendingRevenue.toFixed(2)}`} color="text-blue-500" />
-        <StatCard title="Openstaande Orders" value={stats.openOrderCount} color="text-orange-500" />
+        <StatCard title="Filament Nodig" value={`${Math.round(stats.totalFilamentWeight)}g`} color="text-rose-500" />
+        <StatCard title="Open Orders" value={stats.openOrderCount} color="text-orange-500" />
         <StatCard title="Afgeronde Orders" value={stats.completedOrderCount} color="text-slate-400" />
       </div>
 
@@ -308,14 +311,19 @@ function Dashboard({ orders, products, filaments, settings }) {
         </div>
 
         {/* Filament Prognose */}
-        <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
-          <div className="flex items-center gap-3 mb-8">
-             <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Database size={20}/></div>
-             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Filament Prognose (Wachtrij)</h2>
+        <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
+          <div className="flex items-center justify-between mb-8">
+             <div className="flex items-center gap-3">
+               <div className="p-2 bg-rose-50 text-rose-600 rounded-xl"><Database size={20}/></div>
+               <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Filament Prognose (Openstaand)</h2>
+             </div>
+             <div className="px-4 py-2 bg-rose-50 text-rose-600 rounded-2xl text-[10px] font-black uppercase">
+               Totaal: {Math.round(stats.totalFilamentWeight)}g
+             </div>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-4 flex-1">
              {stats.filamentNeeds.length === 0 ? (
-               <div className="py-8 text-center text-xs text-slate-300 italic">Geen filament vereist voor huidige wachtrij</div>
+               <div className="py-8 text-center text-xs text-slate-300 italic">Geen filament vereist voor openstaande bestellingen</div>
              ) : (
                stats.filamentNeeds.map((need, idx) => (
                  <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
