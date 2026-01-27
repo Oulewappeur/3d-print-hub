@@ -39,7 +39,8 @@ import {
   Copy,
   Edit3,
   Store,
-  ChevronRight
+  ChevronRight,
+  Layers
 } from 'lucide-react';
 
 const myFirebaseConfig = {
@@ -392,7 +393,7 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
     <div className="space-y-10">
       <button 
         onClick={() => setShowModal(true)} 
-        className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-0 outline-none ring-0 italic tracking-tight"
+        className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-0 outline-none ring-0 italic tracking-tight focus:ring-0 focus:outline-none"
       >
         <Plus size={28} strokeWidth={4} /> BESTELLING INVOEREN
       </button>
@@ -450,7 +451,7 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
                     </select>
                   </td>
                   <td className="px-10 py-10 text-right">
-                    <button onClick={() => onDelete('orders', order.id)} className="text-slate-200 hover:text-rose-500 p-4 bg-slate-50/50 rounded-3xl transition-all border-0 outline-none ring-0 shadow-none"><Trash2 size={24} strokeWidth={2.5}/></button>
+                    <button onClick={() => onDelete('orders', order.id)} className="text-slate-200 hover:text-rose-500 p-4 bg-slate-50/50 rounded-3xl transition-all border-0 outline-none ring-0 shadow-none focus:ring-0 focus:outline-none"><Trash2 size={24} strokeWidth={2.5}/></button>
                   </td>
                 </tr>
               );
@@ -498,8 +499,8 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
               </div>
               <textarea rows="3" className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2rem] outline-none font-bold text-slate-700 shadow-inner" placeholder="Extra opmerkingen..." value={formData.comments} onChange={e => setFormData({...formData, comments: e.target.value})} />
               <div className="flex gap-8 pt-8">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-[0.2em] text-xs border-0 outline-none ring-0">Annuleren</button>
-                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-0 outline-none ring-0 italic">OPSLAAN</button>
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-[0.2em] text-xs border-0 outline-none ring-0 focus:ring-0 focus:outline-none">Annuleren</button>
+                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-0 outline-none ring-0 focus:ring-0 focus:outline-none italic uppercase">OPSLAAN</button>
               </div>
             </form>
           </div>
@@ -512,6 +513,17 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
 function ProductList({ products, filaments, settings, onAdd, onDelete }) {
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ name: '', weight: '', printTime: '', filamentIds: [], suggestedPrice: '' });
+
+  // Filamenten groeperen voor toewijzing
+  const groupedFilaments = useMemo(() => {
+    const groups = {};
+    filaments.filter(f => f.status === 'actief').forEach(f => {
+      const key = `${f.brand}-${f.materialType}-${f.colorName}`;
+      if (!groups[key]) groups[key] = { ...f, rolls: [] };
+      groups[key].rolls.push(f);
+    });
+    return Object.values(groups);
+  }, [filaments]);
 
   const calculateCosts = (p) => {
     let materialCost = 0;
@@ -546,7 +558,7 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
     <div className="space-y-12">
       <button 
         onClick={() => setShowModal(true)} 
-        className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-0 outline-none ring-0 italic tracking-tight"
+        className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-0 outline-none ring-0 focus:ring-0 focus:outline-none italic tracking-tight"
       >
         <Plus size={28} strokeWidth={4} /> NIEUW PRODUCT
       </button>
@@ -584,7 +596,7 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
                   <p className="text-2xl font-black text-purple-600 tracking-tighter">€{(product.suggestedPrice || 0).toFixed(2)}</p>
                 </div>
               </div>
-              <button onClick={() => onDelete('products', product.id)} className="absolute top-10 right-10 text-slate-100 hover:text-rose-500 p-3 border-0 outline-none ring-0 shadow-none transition-colors"><Trash2 size={24}/></button>
+              <button onClick={() => onDelete('products', product.id)} className="absolute top-10 right-10 text-slate-100 hover:text-rose-500 p-3 border-0 outline-none ring-0 shadow-none focus:ring-0 focus:outline-none transition-colors"><Trash2 size={24}/></button>
             </div>
           );
         })}
@@ -611,37 +623,44 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
               </div>
               
               <div className="space-y-4">
-                <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Filamenten</label>
-                <div className="grid grid-cols-2 gap-4 max-h-48 overflow-y-auto p-4 bg-slate-50 rounded-[2rem] shadow-inner">
-                  {filaments.filter(f => f.status === 'actief').map(f => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => toggleFilament(f.id)}
-                      className={`flex items-center gap-3 p-4 rounded-2xl border-0 ring-0 outline-none transition-all text-left shadow-none ${
-                        formData.filamentIds.includes(f.id) 
-                          ? 'bg-purple-100 text-purple-900 ring-2 ring-purple-500' 
-                          : 'bg-white shadow-sm'
-                      }`}
-                    >
-                      <div className="w-5 h-5 rounded-full shadow-inner border border-slate-100" style={{ backgroundColor: f.colorCode }}></div>
-                      <div className="flex-1 truncate">
-                        <p className="text-[10px] font-black uppercase leading-none tracking-tight">{f.brand}</p>
-                        <p className="text-[9px] text-slate-400 font-bold truncate mt-1">{f.colorName}</p>
-                      </div>
-                    </button>
+                <label className="text-[11px] font-black uppercase text-slate-400 ml-4">Toegewezen Filamenten</label>
+                <div className="space-y-6 max-h-[40vh] overflow-y-auto p-4 bg-slate-50 rounded-[2rem] shadow-inner">
+                  {groupedFilaments.map(group => (
+                    <div key={`${group.brand}-${group.colorName}`} className="space-y-2">
+                       <p className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">{group.brand} {group.materialType} - {group.colorName}</p>
+                       <div className="grid grid-cols-2 gap-3">
+                          {group.rolls.map(roll => (
+                            <button
+                              key={roll.id}
+                              type="button"
+                              onClick={() => toggleFilament(roll.id)}
+                              className={`flex items-center gap-3 p-4 rounded-2xl border-0 ring-0 outline-none transition-all text-left shadow-none focus:ring-0 focus:outline-none ${
+                                formData.filamentIds.includes(roll.id) 
+                                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' 
+                                  : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100'
+                              }`}
+                            >
+                              <div className="w-4 h-4 rounded-full shadow-inner border border-white/20" style={{ backgroundColor: roll.colorCode }}></div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black uppercase truncate leading-none">Rol #{roll.id.slice(-4)}</p>
+                                <p className="text-[9px] font-bold opacity-60 mt-1">{Math.round(roll.totalWeight - (roll.usedWeight || 0))}g over</p>
+                              </div>
+                            </button>
+                          ))}
+                       </div>
+                    </div>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <label className="text-[11px] font-black uppercase text-slate-400 text-center block tracking-widest">Aanbevolen Verkoopprijs (€)</label>
+              <div className="space-y-3 text-center">
+                <label className="text-[11px] font-black uppercase text-slate-400 tracking-widest">Aanbevolen Verkoopprijs (€)</label>
                 <input required type="number" step="0.01" className="w-full p-7 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[2.5rem] outline-none font-black text-4xl text-center shadow-inner" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} />
               </div>
               
               <div className="flex gap-8 pt-8">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest text-xs border-0 outline-none ring-0">Annuleren</button>
-                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-0 outline-none ring-0 italic">OPSLAAN</button>
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest text-xs border-0 outline-none ring-0 focus:ring-0 focus:outline-none">Annuleren</button>
+                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-0 outline-none ring-0 focus:ring-0 focus:outline-none italic uppercase">OPSLAAN</button>
               </div>
             </form>
           </div>
@@ -661,6 +680,25 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
     purchaseDate: new Date().toISOString().split('T')[0], shopName: ''
   });
   const [showArchived, setShowArchived] = useState(false);
+
+  // Filamenten groeperen op "soort"
+  const groupedStock = useMemo(() => {
+    const groups = {};
+    filaments.filter(f => (showArchived ? f.status === 'leeg' : f.status === 'actief')).forEach(f => {
+      const key = `${f.brand}-${f.materialType}-${f.colorName}`;
+      if (!groups[key]) {
+        groups[key] = {
+          brand: f.brand,
+          materialType: f.materialType,
+          colorName: f.colorName,
+          colorCode: f.colorCode,
+          rolls: []
+        };
+      }
+      groups[key].rolls.push(f);
+    });
+    return Object.values(groups);
+  }, [filaments, showArchived]);
 
   const handlePriceChange = (field, value) => {
     const val = Number(value);
@@ -703,76 +741,85 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
     setShowModal(true);
   };
 
-  const activeFilaments = filaments.filter(f => (showArchived ? f.status === 'leeg' : f.status === 'actief'));
-
   return (
     <div className="space-y-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
         <button 
           onClick={() => openModal('add')} 
-          className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-0 outline-none italic"
+          className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-6 rounded-[2.5rem] flex items-center gap-5 font-black shadow-2xl shadow-purple-200 hover:scale-[1.03] active:scale-[0.97] transition-all border-0 outline-none ring-0 focus:ring-0 focus:outline-none italic uppercase"
         >
           <Plus size={28} strokeWidth={4} /> NIEUWE ROL
         </button>
         <button 
           onClick={() => setShowArchived(!showArchived)} 
-          className="flex items-center gap-4 px-10 py-5 bg-white border-2 border-slate-100 rounded-[2.5rem] font-black text-xs uppercase tracking-widest text-slate-400 transition-all hover:border-purple-200 hover:text-purple-600 outline-none border-0 ring-0 shadow-sm"
+          className="flex items-center gap-4 px-10 py-5 bg-white border border-slate-200 rounded-[2.5rem] font-black text-xs uppercase tracking-widest text-slate-400 transition-all hover:border-purple-200 hover:text-purple-600 outline-none border-none ring-0 shadow-sm focus:ring-0 focus:outline-none"
         >
-          {showArchived ? 'Actieve Rollen' : 'Archief (Leeg)'}
+          {showArchived ? 'Terug naar Actieve Rollen' : 'Toon Lege Rollen (Archief)'}
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
-        {activeFilaments.map(fil => {
-          const rem = fil.totalWeight - (fil.usedWeight || 0);
-          const perc = (rem / (fil.totalWeight || 1)) * 100;
-          const isLow = perc < 15 && fil.status === 'actief';
-
+      <div className="grid grid-cols-1 gap-12">
+        {groupedStock.map(group => {
+          const totalRemaining = group.rolls.reduce((acc, roll) => acc + (roll.totalWeight - (roll.usedWeight || 0)), 0);
           return (
-            <div key={fil.id} className={`bg-white p-12 rounded-[4rem] border-2 transition-all relative group shadow-sm hover:shadow-2xl ${isLow ? 'border-rose-200 shadow-rose-50' : 'border-slate-50'}`}>
-              <div className="flex justify-between items-start mb-10">
-                <div className="min-w-0 flex-1 pr-4">
-                  <div className="flex items-center gap-3 mb-2">
-                     <h3 className="text-2xl font-black text-slate-900 leading-tight italic truncate">{fil.brand}</h3>
-                     <span className="shrink-0 text-[10px] bg-purple-50 text-purple-600 px-2 py-1 rounded-xl font-black uppercase tracking-widest">{fil.materialType || 'PLA'}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs font-black uppercase text-slate-400 tracking-widest mb-4">
-                    <div className="w-5 h-5 rounded-full border border-slate-100 shadow-sm" style={{ backgroundColor: fil.colorCode }}></div>
-                    {fil.colorName} • €{fil.price?.toFixed(2)}
-                  </div>
-                  <div className="flex flex-wrap gap-4 text-[9px] font-black text-slate-300 uppercase tracking-widest">
-                     <span className="flex items-center gap-1.5"><Calendar size={14} className="text-purple-300"/> {fil.purchaseDate || 'N/A'}</span>
-                     {fil.shopName && <span className="flex items-center gap-1.5"><Store size={14} className="text-purple-300"/> {fil.shopName}</span>}
-                  </div>
-                </div>
-                <div className="flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openModal('edit', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-0 outline-none ring-0 transition-colors"><Edit3 size={20}/></button>
-                  <button onClick={() => openModal('copy', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-0 outline-none ring-0 transition-colors"><Copy size={20}/></button>
-                  <button onClick={() => onDelete('filaments', fil.id)} className="text-slate-300 hover:text-rose-500 p-2 border-0 outline-none ring-0 transition-colors"><Trash2 size={20}/></button>
-                  {fil.status === 'actief' ? (
-                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'leeg' })} className="text-slate-300 hover:text-purple-500 p-2 border-0 outline-none ring-0 transition-colors"><Archive size={20}/></button>
-                  ) : (
-                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'actief' })} className="text-slate-300 hover:text-emerald-500 p-2 border-0 outline-none ring-0 transition-colors"><RefreshCw size={20}/></button>
-                  )}
-                </div>
-              </div>
-              
-              <div className="space-y-4 mb-10">
-                <div className="flex justify-between items-end px-2">
-                   <p className={`text-[11px] font-black uppercase tracking-widest ${isLow ? 'text-rose-500' : 'text-slate-400'}`}>Resterend</p>
-                   <p className="text-lg font-black tracking-tighter italic">{Math.round(rem)}g / {fil.totalWeight}g</p>
-                </div>
-                <div className="w-full bg-slate-100 h-6 rounded-full overflow-hidden border border-slate-200 p-1.5 shadow-inner">
-                  <div className={`h-full transition-all duration-1000 rounded-full ${isLow ? 'bg-rose-500 animate-pulse' : 'bg-purple-600 shadow-lg shadow-purple-200'}`} style={{ width: `${Math.max(0, perc)}%` }}></div>
+            <div key={`${group.brand}-${group.colorName}`} className="space-y-6">
+              <div className="flex items-center gap-4 px-8 py-4 bg-white/50 rounded-[2rem] border border-slate-100 shadow-sm w-fit">
+                <div className="w-8 h-8 rounded-full shadow-inner border-2 border-white" style={{ backgroundColor: group.colorCode }}></div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight italic">{group.brand} {group.materialType} - {group.colorName}</h3>
+                  <p className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Totaal in voorraad: {Math.round(totalRemaining)}g</p>
                 </div>
               </div>
 
-              {fil.status === 'actief' && (
-                <div className="bg-slate-50 p-6 rounded-[2.5rem] flex items-center gap-5 border-2 border-transparent focus-within:border-purple-200 transition-all shadow-inner group-focus-within:shadow-none">
-                   <Hash size={24} className="text-purple-500 shrink-0" />
-                   <input type="number" placeholder="Verbruik invoeren..." className="w-full bg-transparent border-0 outline-none ring-0 font-black text-slate-800 text-base" onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value) { onUpdate('filaments', fil.id, { usedWeight: (fil.usedWeight || 0) + Number(e.target.value) }); e.target.value = ''; } }} />
-                </div>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {group.rolls.map(fil => {
+                  const rem = fil.totalWeight - (fil.usedWeight || 0);
+                  const perc = (rem / (fil.totalWeight || 1)) * 100;
+                  const isLow = perc < 15 && fil.status === 'actief';
+
+                  return (
+                    <div key={fil.id} className={`bg-white p-10 rounded-[4rem] border-2 transition-all relative group shadow-sm hover:shadow-xl ${isLow ? 'border-rose-200 shadow-rose-50' : 'border-slate-50'}`}>
+                      <div className="flex justify-between items-start mb-8">
+                        <div className="min-w-0 flex-1 pr-4">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Aankoop Details</p>
+                          <div className="flex flex-wrap gap-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                             <span className="flex items-center gap-1.5"><Calendar size={14} className="text-purple-400"/> {fil.purchaseDate || 'N/A'}</span>
+                             {fil.shopName && <span className="flex items-center gap-1.5"><Store size={14} className="text-purple-400"/> {fil.shopName}</span>}
+                             <span className="flex items-center gap-1.5"><Euro size={14} className="text-purple-400"/> {fil.price?.toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => openModal('edit', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-0 outline-none ring-0 focus:ring-0 focus:outline-none transition-colors"><Edit3 size={20}/></button>
+                          <button onClick={() => openModal('copy', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-0 outline-none ring-0 focus:ring-0 focus:outline-none transition-colors"><Copy size={20}/></button>
+                          <button onClick={() => onDelete('filaments', fil.id)} className="text-slate-300 hover:text-rose-500 p-2 border-0 outline-none ring-0 focus:ring-0 focus:outline-none transition-colors"><Trash2 size={20}/></button>
+                          {fil.status === 'actief' ? (
+                            <button onClick={() => onUpdate('filaments', fil.id, { status: 'leeg' })} className="text-slate-300 hover:text-purple-500 p-2 border-0 outline-none ring-0 focus:ring-0 focus:outline-none transition-colors"><Archive size={20}/></button>
+                          ) : (
+                            <button onClick={() => onUpdate('filaments', fil.id, { status: 'actief' })} className="text-slate-300 hover:text-emerald-500 p-2 border-0 outline-none ring-0 focus:ring-0 focus:outline-none transition-colors"><RefreshCw size={20}/></button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-4 mb-8">
+                        <div className="flex justify-between items-end px-2">
+                           <p className={`text-[10px] font-black uppercase tracking-widest ${isLow ? 'text-rose-500' : 'text-slate-400'}`}>Rol Status</p>
+                           <p className="text-base font-black tracking-tighter italic">{Math.round(rem)}g / {fil.totalWeight}g</p>
+                        </div>
+                        <div className="w-full bg-slate-50 h-5 rounded-full overflow-hidden border border-slate-100 p-1.5 shadow-inner">
+                          <div className={`h-full transition-all duration-1000 rounded-full ${isLow ? 'bg-rose-500 animate-pulse shadow-lg shadow-rose-200' : 'bg-purple-600 shadow-lg shadow-purple-200'}`} style={{ width: `${Math.max(0, perc)}%` }}></div>
+                        </div>
+                      </div>
+
+                      {fil.status === 'actief' && (
+                        <div className="bg-slate-50 p-6 rounded-[2.5rem] flex items-center gap-5 border-2 border-transparent focus-within:border-purple-200 transition-all shadow-inner group-focus-within:shadow-none">
+                           <Hash size={24} className="text-purple-500 shrink-0" />
+                           <input type="number" placeholder="Verbruik (g)..." className="w-full bg-transparent border-0 outline-none ring-0 font-black text-slate-800 text-base shadow-none focus:ring-0 focus:outline-none" onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value) { onUpdate('filaments', fil.id, { usedWeight: (fil.usedWeight || 0) + Number(e.target.value) }); e.target.value = ''; } }} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           );
         })}
@@ -840,8 +887,8 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
               </div>
 
               <div className="flex gap-8 pt-8">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest text-xs border-0 outline-none ring-0">Annuleren</button>
-                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-0 outline-none ring-0 italic">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-6 text-slate-400 font-black uppercase tracking-widest text-xs border-0 outline-none ring-0 focus:ring-0 focus:outline-none">Annuleren</button>
+                <button type="submit" className="flex-1 py-7 bg-purple-600 hover:bg-purple-700 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl shadow-purple-200 border-none outline-none ring-0 focus:ring-0 focus:outline-none italic uppercase">
                   {modalMode === 'edit' ? 'BIJWERKEN' : 'OPSLAAN'}
                 </button>
               </div>
@@ -870,7 +917,7 @@ function SettingsPanel({ settings, onSave }) {
           <label className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Printer Wattage (W)</label>
           <input type="number" className="w-full p-8 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-[3rem] outline-none font-black text-5xl text-center shadow-inner tracking-tighter" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
         </div>
-        <button onClick={() => onSave(temp)} className="w-full py-10 bg-purple-600 hover:bg-purple-700 text-white rounded-[3rem] font-black text-3xl shadow-2xl shadow-purple-200 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border-0 outline-none ring-0 italic">OPSLAAN</button>
+        <button onClick={() => onSave(temp)} className="w-full py-10 bg-purple-600 hover:bg-purple-700 text-white rounded-[3rem] font-black text-3xl shadow-2xl shadow-purple-200 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border-0 outline-none ring-0 shadow-none focus:ring-0 focus:outline-none italic uppercase">OPSLAAN</button>
       </div>
     </div>
   );
