@@ -37,7 +37,9 @@ import {
   RefreshCw, 
   MessageSquare, 
   CheckCircle2, 
-  Calendar 
+  Calendar,
+  Copy,
+  Edit3
 } from 'lucide-react';
 
 /**
@@ -174,16 +176,28 @@ export default function App() {
       return;
     }
     try {
-      await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), {
-        ...data,
-        status: data.status || 'actief',
-        createdAt: new Date().toISOString()
-      });
+      // Ondersteuning voor bulk filament toevoegen
+      if (coll === 'filaments' && data.quantity > 1) {
+        const { quantity, ...singleData } = data;
+        for (let i = 0; i < quantity; i++) {
+          await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), {
+            ...singleData,
+            status: 'actief',
+            createdAt: new Date().toISOString()
+          });
+        }
+      } else {
+        await addDoc(collection(db, 'artifacts', hubId, 'public', 'data', coll), {
+          ...data,
+          status: data.status || 'actief',
+          createdAt: new Date().toISOString()
+        });
+      }
       setErrorMessage(null);
     } catch (e) {
       console.error("Fout bij opslaan:", e);
       if (e.code === 'permission-denied') {
-        setErrorMessage("Security Rules blokkeren het opslaan. Controleer de Rules in Firebase.");
+        setErrorMessage("Security Rules blokkeren het opslaan.");
       } else {
         setErrorMessage(`Opslaan mislukt: ${e.message}`);
       }
@@ -196,9 +210,6 @@ export default function App() {
       await updateDoc(doc(db, 'artifacts', hubId, 'public', 'data', coll, id), data);
     } catch (e) {
       console.error("Fout bij updaten:", e);
-      if (e.code === 'permission-denied') {
-        setErrorMessage("Update geweigerd door Security Rules.");
-      }
     }
   };
 
@@ -488,7 +499,7 @@ function OrderList({ orders, products, filaments, onAdd, onUpdate, onDelete }) {
                   </td>
                   <td className="px-10 py-8">
                     <p className="text-slate-900 text-xl font-black">€{(Number(order.price) * (order.quantity || 1)).toFixed(2)}</p>
-                    <p className="text-[10px] text-slate-400 uppercase font-black">€{Number(order.price).toFixed(2)} p/s</p>
+                    <p className="text-[10px] text-gray-400 uppercase font-black">€{Number(order.price).toFixed(2)} p/s</p>
                   </td>
                   <td className="px-10 py-8">
                     <select 
@@ -688,21 +699,104 @@ function ProductList({ products, filaments, settings, onAdd, onDelete }) {
 
 function StockList({ filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState('add'); // 'add', 'edit', 'copy'
+  const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({ 
     brand: '', 
     materialType: '', 
     colorName: '', 
     colorCode: '#9333ea', 
     totalWeight: 1000, 
-    price: '' 
+    price: '', // Stukprijs
+    totalPrice: '', // Totaalprijs (stuk * aantal)
+    quantity: 1
   });
   const [showArchived, setShowArchived] = useState(false);
 
+  // Prijs logica: update totaalprijs als stukprijs of aantal verandert
+  const updatePricePerPiece = (total, qty) => {
+    if (!qty || qty <= 0) return 0;
+    return Number((total / qty).toFixed(2));
+  };
+
+  const updateTotalPrice = (piece, qty) => {
+    return Number((piece * qty).toFixed(2));
+  };
+
+  const handlePriceChange = (field, value) => {
+    const val = Number(value);
+    if (field === 'price') {
+      setFormData(prev => ({ 
+        ...prev, 
+        price: val, 
+        totalPrice: updateTotalPrice(val, prev.quantity) 
+      }));
+    } else if (field === 'totalPrice') {
+      setFormData(prev => ({ 
+        ...prev, 
+        totalPrice: val, 
+        price: updatePricePerPiece(val, prev.quantity) 
+      }));
+    } else if (field === 'quantity') {
+      const q = Number(value);
+      setFormData(prev => ({ 
+        ...prev, 
+        quantity: q, 
+        totalPrice: updateTotalPrice(prev.price, q) 
+      }));
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    onAdd('filaments', { ...formData, usedWeight: 0, price: Number(formData.price), status: 'actief' });
+    if (modalMode === 'edit') {
+      onUpdate('filaments', editingId, { 
+        brand: formData.brand,
+        materialType: formData.materialType,
+        colorName: formData.colorName,
+        colorCode: formData.colorCode,
+        totalWeight: Number(formData.totalWeight),
+        price: Number(formData.price)
+      });
+    } else {
+      // 'add' of 'copy' modus
+      onAdd('filaments', { 
+        ...formData, 
+        usedWeight: 0, 
+        price: Number(formData.price), 
+        totalWeight: Number(formData.totalWeight),
+        status: 'actief' 
+      });
+    }
+    closeModal();
+  };
+
+  const openModal = (mode, item = null) => {
+    setModalMode(mode);
+    if (item) {
+      setEditingId(item.id);
+      setFormData({
+        brand: item.brand,
+        materialType: item.materialType,
+        colorName: item.colorName,
+        colorCode: item.colorCode,
+        totalWeight: item.totalWeight,
+        price: item.price,
+        totalPrice: item.price,
+        quantity: 1
+      });
+    } else {
+      setFormData({ 
+        brand: '', materialType: '', colorName: '', colorCode: '#9333ea', 
+        totalWeight: 1000, price: '', totalPrice: '', quantity: 1 
+      });
+    }
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
     setShowModal(false);
-    setFormData({ brand: '', materialType: '', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '' });
+    setEditingId(null);
   };
 
   const activeFilaments = filaments.filter(f => (showArchived ? f.status === 'leeg' : f.status === 'actief'));
@@ -710,7 +804,7 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
   return (
     <div className="space-y-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <button onClick={() => setShowModal(true)} className="bg-purple-600 text-white px-10 py-5 rounded-3xl flex items-center gap-4 font-black shadow-xl shadow-purple-100 hover:scale-[1.03] transition-all border-none outline-none" style={{ backgroundColor: '#9333ea' }}>
+        <button onClick={() => openModal('add')} className="bg-purple-600 text-white px-10 py-5 rounded-3xl flex items-center gap-4 font-black shadow-xl shadow-purple-100 hover:scale-[1.03] transition-all border-none outline-none" style={{ backgroundColor: '#9333ea' }}>
           <Plus size={24} strokeWidth={4} /> NIEUWE ROL
         </button>
         <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-3 px-8 py-4 bg-white border-2 border-slate-100 rounded-[2rem] font-black text-[10px] uppercase text-slate-400 transition-all hover:border-purple-200 hover:text-purple-600 outline-none">
@@ -738,9 +832,13 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => onDelete('filaments', fil.id)} className="text-slate-300 hover:text-rose-500 p-2 border-none"><Trash2 size={20}/></button>
-                  {fil.status === 'actief' && (
-                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'leeg' })} className="text-slate-300 hover:text-purple-500 p-2 border-none"><Archive size={20}/></button>
+                  <button onClick={() => openModal('edit', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-none" title="Bewerken"><Edit3 size={18}/></button>
+                  <button onClick={() => openModal('copy', fil)} className="text-slate-300 hover:text-purple-600 p-2 border-none" title="Kopiëren als template"><Copy size={18}/></button>
+                  <button onClick={() => onDelete('filaments', fil.id)} className="text-slate-300 hover:text-rose-500 p-2 border-none" title="Verwijderen"><Trash2 size={18}/></button>
+                  {fil.status === 'actief' ? (
+                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'leeg' })} className="text-slate-300 hover:text-purple-500 p-2 border-none" title="Markeer als leeg"><Archive size={18}/></button>
+                  ) : (
+                    <button onClick={() => onUpdate('filaments', fil.id, { status: 'actief' })} className="text-slate-300 hover:text-emerald-500 p-2 border-none" title="Terugzetten naar actief"><RefreshCw size={18}/></button>
                   )}
                 </div>
               </div>
@@ -769,7 +867,9 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xl flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh]">
-            <h2 className="text-3xl font-black mb-10 tracking-tight uppercase text-slate-900">Rol Toevoegen</h2>
+            <h2 className="text-3xl font-black mb-10 tracking-tight uppercase text-slate-900">
+              {modalMode === 'edit' ? 'Rol Aanpassen' : modalMode === 'copy' ? 'Template Kopiëren' : 'Nieuwe Rol Toevoegen'}
+            </h2>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
@@ -777,27 +877,50 @@ function StockList({ filaments, onAdd, onUpdate, onDelete }) {
                   <input required placeholder="Bijv. eSun" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Materiaal Soort (Tekst)</label>
-                  <input required placeholder="Bijv. PLA+, PETG, Carbon" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner uppercase" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} />
+                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Materiaal</label>
+                  <input required placeholder="Bijv. PLA+, PETG" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner uppercase" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} />
                 </div>
               </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Kleur Naam</label>
+                  <input required placeholder="Bijv. Cold White" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Totaal Gewicht (g)</label>
+                  <input required type="number" placeholder="Bijv. 1000" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} />
+                </div>
+              </div>
+
+              {modalMode !== 'edit' && (
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Aantal rollen (Bulk invoer)</label>
+                  <input required type="number" min="1" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-black text-xl shadow-inner" value={formData.quantity} onChange={e => handlePriceChange('quantity', e.target.value)} />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-6 border-t border-slate-100 pt-6">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3 tracking-widest">Prijs p/s (€)</label>
+                  <input required type="number" step="0.01" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-black text-xl text-center shadow-inner" value={formData.price} onChange={e => handlePriceChange('price', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3 tracking-widest">Totaal Prijs (€)</label>
+                  <input required type="number" step="0.01" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-black text-xl text-center shadow-inner" value={formData.totalPrice} onChange={e => handlePriceChange('totalPrice', e.target.value)} />
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase text-slate-400 ml-3">Kleur Naam</label>
-                <input required placeholder="Bijv. Cold White" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-bold text-lg shadow-inner" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} />
+                <label className="text-[11px] font-black uppercase text-slate-400 ml-3 tracking-widest">Kleur Visualisatie</label>
+                <input required type="color" className="w-full h-[68px] p-2 bg-slate-50 rounded-3xl cursor-pointer shadow-inner" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} />
               </div>
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3 tracking-widest">Inkoop Prijs (€)</label>
-                  <input required type="number" step="0.01" placeholder="Prijs" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-purple-500 rounded-3xl outline-none font-black text-xl text-center shadow-inner" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase text-slate-400 ml-3 tracking-widest">Kleur Kies</label>
-                  <input required type="color" className="w-full h-[68px] p-2 bg-slate-50 rounded-3xl cursor-pointer shadow-inner" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} />
-                </div>
-              </div>
+
               <div className="flex gap-6 pt-8">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-5 text-slate-400 font-black uppercase tracking-widest">Annuleren</button>
-                <button type="submit" className="flex-1 py-6 bg-purple-600 text-white rounded-[2rem] font-black text-xl shadow-2xl shadow-purple-100 border-none" style={{ backgroundColor: '#9333ea' }}>OPSLAAN</button>
+                <button type="button" onClick={closeModal} className="flex-1 py-5 text-slate-400 font-black uppercase tracking-widest">Annuleren</button>
+                <button type="submit" className="flex-1 py-6 bg-purple-600 text-white rounded-[2rem] font-black text-xl shadow-2xl shadow-purple-100 border-none" style={{ backgroundColor: '#9333ea' }}>
+                  {modalMode === 'edit' ? 'BIJWERKEN' : 'OPSLAAN'}
+                </button>
               </div>
             </form>
           </div>
