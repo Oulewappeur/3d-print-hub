@@ -50,7 +50,8 @@ import {
   Check,
   BarChart3,
   History,
-  AlertCircle
+  AlertCircle,
+  Store
 } from 'lucide-react';
 
 // Firebase Configuratie
@@ -807,9 +808,10 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
 
 function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [expanded, setExpanded] = useState({});
   const [archived, setArchived] = useState(false);
-  const [formData, setFormData] = useState({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], quantity: 1 });
+  const [formData, setFormData] = useState({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 });
 
   const grouped = useMemo(() => {
     const res = {};
@@ -821,11 +823,32 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
     return Object.values(res);
   }, [filaments, archived]);
 
+  const handleEditClick = (rol) => {
+    setEditingId(rol.id);
+    setFormData({
+      brand: rol.brand || '',
+      materialType: rol.materialType || 'PLA',
+      colorName: rol.colorName || '',
+      colorCode: rol.colorCode || '#9333ea',
+      totalWeight: rol.totalWeight || 1000,
+      price: rol.price || '',
+      purchaseDate: rol.purchaseDate || new Date().toISOString().split('T')[0],
+      shop: rol.shop || '',
+      quantity: 1,
+      usedWeight: rol.usedWeight || 0
+    });
+    setShowModal(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <button 
-          onClick={() => setShowModal(true)} 
+          onClick={() => {
+            setEditingId(null);
+            setFormData({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 });
+            setShowModal(true);
+          }} 
           style={{ backgroundColor: '#9333ea' }}
           className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none cursor-pointer transition-all hover:bg-purple-700"
         >
@@ -849,23 +872,32 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                 <React.Fragment key={k}>
                   <tr onClick={() => setExpanded({...expanded, [k]: !isEx})} className="hover:bg-slate-50/50 cursor-pointer transition-colors">
                     <td className="px-8 py-5"><div className="w-8 h-8 rounded-xl shadow-inner border border-slate-100" style={{backgroundColor: g.colorCode}}></div></td>
-                    <td className="px-8 py-5"><p className="font-bold text-slate-800">{g.brand} {g.materialType}</p><p className="text-[9px] text-slate-400 uppercase font-black">{g.colorName}</p></td>
+                    <td className="px-8 py-5">
+                      <p className="font-bold text-slate-800">{g.brand} {g.materialType}</p>
+                      <p className="text-[9px] text-slate-400 uppercase font-black">{g.colorName}</p>
+                    </td>
                     <td className="px-8 py-5 font-black text-slate-700 italic text-lg">{Math.round(total)}g</td>
                     <td className="px-8 py-5 text-right text-slate-300">{isEx ? <ChevronDown size={22} className="text-purple-600"/> : <ChevronRight size={22}/>}</td>
                   </tr>
                   {isEx && g.rolls.map(r => (
                     <tr key={r.id} className="bg-slate-50/30 border-l-4 border-purple-500">
                       <td colSpan="2" className="px-10 py-4">
-                        <p className="text-[9px] font-black uppercase text-slate-400 font-black">Rol #{r.id.slice(-4)} ({r.status})</p>
-                        <p className="text-xs text-slate-500 font-bold italic font-bold">Sinds: {r.purchaseDate}</p>
+                        <div className="flex flex-col gap-1">
+                          <p className="text-[9px] font-black uppercase text-slate-400 font-black">Rol #{r.id.slice(-4)} ({r.status})</p>
+                          <div className="flex items-center gap-3">
+                            <p className="text-xs text-slate-500 font-bold italic">Sinds: {r.purchaseDate}</p>
+                            {r.shop && <p className="text-[9px] bg-white px-2 py-0.5 rounded-lg border border-slate-100 text-purple-600 font-black uppercase italic"><Store size={8} className="inline mr-1 mb-0.5" /> {r.shop}</p>}
+                          </div>
+                        </div>
                       </td>
-                      <td className="px-8 py-4 font-black text-slate-600">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
+                      <td className="px-8 py-4 font-black text-slate-600 italic">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
                       <td className="px-8 py-4 text-right flex justify-end gap-2">
                         <div className="flex bg-white rounded-lg border border-slate-200 p-1 px-3 items-center shadow-sm">
                           <Hash size={12} className="text-purple-500 mr-2" />
                           <input type="number" placeholder="+/- G" className="w-12 text-[10px] font-bold outline-none border-none p-0 bg-transparent" onKeyDown={e => e.key === 'Enter' && (onUpdate('filaments', r.id, {usedWeight: Math.max(0, (r.usedWeight || 0) + Number(e.target.value))}), e.target.value = '')} />
                         </div>
-                        <button onClick={() => onUpdate('filaments', r.id, {status: r.status === 'actief' ? 'voorraad' : 'actief'})} className={`p-2 rounded-xl transition-all border-none ${r.status === 'actief' ? 'bg-emerald-50 text-emerald-500' : 'bg-white text-slate-300'} cursor-pointer shadow-sm`}><Zap size={16}/></button>
+                        <button onClick={() => handleEditClick(r)} className="p-2 bg-white rounded-xl text-slate-400 hover:text-purple-600 border-none cursor-pointer shadow-sm"><Edit3 size={16}/></button>
+                        <button onClick={() => onUpdate('filaments', r.id, {status: r.status === 'actief' ? 'voorraad' : 'actief'})} className={`p-2 rounded-xl transition-all border-none ${r.status === 'actief' ? 'bg-emerald-50 text-emerald-500' : 'bg-white text-slate-300'} cursor-pointer shadow-sm`} title="Toggelt Actief"><Zap size={16}/></button>
                         <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2 bg-white rounded-xl text-slate-300 hover:text-rose-500 border-none cursor-pointer shadow-sm"><Archive size={16}/></button>
                       </td>
                     </tr>
@@ -876,18 +908,23 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
           </tbody>
         </table>
       </div>
-      {showModal && <Modal title="Filament Toevoegen" onClose={() => setShowModal(false)}>
+      {showModal && <Modal title={editingId ? "Rol Aanpassen" : "Filament Toevoegen"} onClose={() => setShowModal(false)}>
         <form onSubmit={(e) => {
           e.preventDefault();
           const { quantity, ...data } = formData;
-          for(let i=0; i<quantity; i++) onAdd('filaments', {...data, usedWeight: 0, status: 'voorraad', price: Number(data.price)});
+          if (editingId) {
+            onUpdate('filaments', editingId, { ...data, price: Number(data.price), totalWeight: Number(data.totalWeight) });
+          } else {
+            for(let i=0; i<quantity; i++) onAdd('filaments', {...data, usedWeight: 0, status: 'voorraad', price: Number(data.price), totalWeight: Number(data.totalWeight)});
+          }
           setShowModal(false);
         }} className="space-y-6">
           <div className="grid grid-cols-2 gap-4"><Input label="Merk" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} required /><Input label="Type" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required /></div>
           <div className="grid grid-cols-2 gap-4"><Input label="Kleur" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest font-black">Visueel</label><input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer shadow-inner appearance-none outline-none" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
+          <div className="grid grid-cols-2 gap-4"><Input label="Winkel" value={formData.shop} onChange={e => setFormData({...formData, shop: e.target.value})} placeholder="Bijv: 123-3D" /><Input label="Koop Datum" type="date" value={formData.purchaseDate} onChange={e => setFormData({...formData, purchaseDate: e.target.value})} /></div>
           <div className="grid grid-cols-2 gap-4"><Input label="Prijs" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required /><Input label="Totaal (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required /></div>
-          <Input label="Aantal rollen" type="number" min="1" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />
-          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">In Voorraad Plaatsen</button>
+          {!editingId && <Input label="Aantal rollen" type="number" min="1" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />}
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic transition-all hover:bg-purple-700">{editingId ? 'Rol Bijwerken' : 'In Voorraad Plaatsen'}</button>
         </form>
       </Modal>}
     </div>
