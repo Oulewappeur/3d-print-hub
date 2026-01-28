@@ -216,7 +216,7 @@ function Dashboard({ orders, products, filaments, settings }) {
     const filamentConsumedBreakdown = {};
     const filamentKeyStockRemaining = {};
     
-    // Bereken actuele voorraad per soort (key) voor tekort-meldingen
+    // Bereken actuele voorraad per soort (key) voor tekort-meldingen (op basis van resterende rol inhoud)
     filaments.forEach(f => {
       if (f.status === 'leeg') return;
       const key = `${f.brand}-${f.materialType}-${f.colorName}`;
@@ -225,21 +225,10 @@ function Dashboard({ orders, products, filaments, settings }) {
       filamentKeyStockRemaining[key] += remaining;
     });
 
-    // Bereken verbruik per soort (key) en totaal
-    filaments.forEach(f => {
-      const key = `${f.brand}-${f.materialType}-${f.colorName}`;
-      const used = Number(f.usedWeight) || 0;
-      totalConsumedWeight += used;
-      if (!filamentConsumedBreakdown[key]) {
-        filamentConsumedBreakdown[key] = { weight: 0, info: f };
-      }
-      filamentConsumedBreakdown[key].weight += used;
-    });
-
     const completedOrders = orders.filter(o => (o.items || []).every(i => i.status === 'Afgerond'));
     const activeOrders = orders.filter(o => !(o.items || []).every(i => i.status === 'Afgerond'));
 
-    // Gerealiseerde stats
+    // Gerealiseerde stats EN Verbruik historie (op basis van Bestellingen)
     completedOrders.forEach(o => {
       (o.items || []).forEach(item => {
         const itemRev = (Number(item.price) || 0) * (Number(item.quantity) || 0);
@@ -247,15 +236,29 @@ function Dashboard({ orders, products, filaments, settings }) {
         
         const p = products.find(prod => prod.id === item.productId);
         if (p) {
+          // Kostenberekening
           const matCost = (p.filaments || []).reduce((s, f) => s + (f.weight * getFilamentGramPrice(filaments, f.key)), 0);
           const energy = (p.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice;
           const totalItemCost = (matCost + energy) * (Number(item.quantity) || 0);
           cost += totalItemCost;
 
+          // Product prestaties
           if (!productStats[p.id]) productStats[p.id] = { name: p.name, revenue: 0, profit: 0, count: 0 };
           productStats[p.id].revenue += itemRev;
           productStats[p.id].profit += (itemRev - totalItemCost);
           productStats[p.id].count += Number(item.quantity) || 0;
+
+          // Verbruikshistorie berekening op basis van producten in de bestelling
+          if (p.filaments) {
+            p.filaments.forEach(f => {
+              const weightContribution = f.weight * (Number(item.quantity) || 0);
+              totalConsumedWeight += weightContribution;
+              if (!filamentConsumedBreakdown[f.key]) {
+                filamentConsumedBreakdown[f.key] = { weight: 0, info: filaments.find(fil => `${fil.brand}-${fil.materialType}-${fil.colorName}` === f.key) };
+              }
+              filamentConsumedBreakdown[f.key].weight += weightContribution;
+            });
+          }
         }
       });
     });
@@ -312,8 +315,8 @@ function Dashboard({ orders, products, filaments, settings }) {
         <StatCard title="Gerealiseerde Winst" value={`€${stats.profit.toFixed(2)}`} color="text-emerald-600" />
         <StatCard title="Te Realiseren Omzet" value={`€${stats.pendingRevenue.toFixed(2)}`} color="text-blue-500" />
         <StatCard title="Totaal Verbruikt" value={`${Math.round(stats.totalConsumedWeight)}g`} color="text-slate-500" />
-        <StatCard title="Open Orders" value={stats.openOrderCount} color="text-orange-500" />
-        <StatCard title="Afgeronde Orders" value={stats.completedOrderCount} color="text-slate-400" />
+        <StatCard title="Open Bestellingen" value={stats.openOrderCount} color="text-orange-500" />
+        <StatCard title="Afgeronde Bestellingen" value={stats.completedOrderCount} color="text-slate-400" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
@@ -379,7 +382,7 @@ function Dashboard({ orders, products, filaments, settings }) {
           </div>
         </div>
 
-        {/* Totaal Verbruikt Filament Breakdown */}
+        {/* Totaal Verbruikt Filament Breakdown (op basis van Bestellingen) */}
         <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-8">
              <div className="flex items-center gap-3">
@@ -392,15 +395,15 @@ function Dashboard({ orders, products, filaments, settings }) {
           </div>
           <div className="space-y-4 flex-1">
              {stats.filamentConsumedBreakdown.length === 0 ? (
-               <div className="py-8 text-center text-xs text-slate-300 italic font-bold">Nog geen verbruik geregistreerd</div>
+               <div className="py-8 text-center text-xs text-slate-300 italic font-bold">Nog geen verbruik geregistreerd via bestellingen</div>
              ) : (
                stats.filamentConsumedBreakdown.slice(0, 6).map((item, idx) => (
                  <div key={idx} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl group hover:bg-slate-50 transition-colors">
                     <div className="flex items-center gap-3">
                        <div className="w-3 h-3 rounded-full border border-white" style={{ backgroundColor: item.info?.colorCode || '#ccc' }}></div>
                        <div>
-                          <p className="text-xs font-bold text-slate-600">{item.info?.brand} {item.info?.materialType}</p>
-                          <p className="text-[9px] font-black uppercase text-slate-300">{item.info?.colorName}</p>
+                          <p className="text-xs font-bold text-slate-600">{item.info?.brand || 'Onbekend'} {item.info?.materialType || ''}</p>
+                          <p className="text-[9px] font-black uppercase text-slate-300">{item.info?.colorName || item.key}</p>
                        </div>
                     </div>
                     <div className="text-right">
