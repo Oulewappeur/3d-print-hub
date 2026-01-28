@@ -646,7 +646,13 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
     const types = {};
     filaments.forEach(f => {
       const key = `${f.brand}-${f.materialType}-${f.colorName}`;
-      if (!types[key]) types[key] = { key, color: f.colorCode, brand: f.brand, colorName: f.colorName };
+      if (!types[key]) types[key] = { 
+        key, 
+        color: f.colorCode, 
+        brand: f.brand, 
+        materialType: f.materialType, 
+        colorName: f.colorName 
+      };
     });
     return Object.values(types);
   }, [filaments]);
@@ -790,7 +796,8 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                       style={{ backgroundColor: assign ? '#9333ea' : '#fff' }}
                       className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none cursor-pointer transition-all ${assign ? 'text-white shadow-md' : 'text-slate-400 font-bold'}`}
                     >
-                      <div className="w-2.5 h-2.5 rounded-full border border-white shadow-sm" style={{backgroundColor: type.color}}></div> {type.brand} {type.colorName}
+                      <div className="w-2.5 h-2.5 rounded-full border border-white shadow-sm" style={{backgroundColor: type.color}}></div> 
+                      {type.brand} {type.materialType} {type.colorName}
                     </button>
                     {assign && <input type="number" className="w-16 p-2 bg-white rounded-lg text-[10px] font-black border-none outline-none shadow-sm" placeholder="G" value={assign.weight} onChange={e => setFormData({...formData, filaments: formData.filaments.map(f => f.key === type.key ? {...f, weight: Number(e.target.value)} : f)})} />}
                   </div>

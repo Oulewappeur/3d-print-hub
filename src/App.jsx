@@ -444,13 +444,23 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
 
   const grouped = useMemo(() => {
     const active = [];
+    const ready = [];
     const completed = [];
+    
     orders.forEach(o => {
-      const isDone = (o.items || []).every(i => i.status === 'Afgerond');
-      if (isDone) completed.push(o);
-      else active.push(o);
+      const items = o.items || [];
+      const allCompleted = items.length > 0 && items.every(i => i.status === 'Afgerond');
+      const allReady = items.length > 0 && items.every(i => i.status === 'Gereed');
+      
+      if (allCompleted) {
+        completed.push(o);
+      } else if (allReady) {
+        ready.push(o);
+      } else {
+        active.push(o);
+      }
     });
-    return { active, completed };
+    return { active, ready, completed };
   }, [orders]);
 
   const handleSubmit = (e) => {
@@ -472,11 +482,15 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
     onUpdate('orders', orderId, { comments: newComment });
   };
 
-  const OrderTable = ({ list, title, isCompletedSection = false }) => (
+  const OrderTable = ({ list, title, isCompletedSection = false, isReadySection = false }) => (
     <div className="space-y-4">
       <div className="flex items-center gap-3 px-4">
-        <ListChecks size={18} className={isCompletedSection ? "text-slate-400" : "text-purple-600"} />
-        <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">{title} ({list.length})</h2>
+        <div className={`p-1.5 rounded-lg ${isReadySection ? 'bg-emerald-100 text-emerald-600' : isCompletedSection ? 'bg-slate-100 text-slate-400' : 'bg-purple-100 text-purple-600'}`}>
+          {isReadySection ? <Check size={14} strokeWidth={3} /> : isCompletedSection ? <Archive size={14} /> : <ListChecks size={14} />}
+        </div>
+        <h2 className={`text-sm font-black uppercase tracking-widest ${isReadySection ? 'text-emerald-500' : 'text-slate-400'}`}>
+          {title} ({list.length})
+        </h2>
       </div>
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left">
@@ -501,12 +515,12 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
                   <div className="flex flex-col gap-2">
                     {(o.items || []).map((item, idx) => (
                       <div key={idx} className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase shrink-0 ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-400' : 'bg-purple-50 text-purple-600'}`}>
+                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase shrink-0 ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-400' : item.status === 'Gereed' ? 'bg-emerald-50 text-emerald-600' : 'bg-purple-50 text-purple-600'}`}>
                           {item.quantity}x {products.find(p => p.id === item.productId)?.name || '?'}
                         </span>
                         {!isCompletedSection && (
                           <select 
-                            className="bg-transparent border-none text-[9px] font-black uppercase text-slate-400 hover:text-purple-600 cursor-pointer outline-none appearance-none"
+                            className={`bg-transparent border-none text-[9px] font-black uppercase cursor-pointer outline-none appearance-none ${item.status === 'Gereed' ? 'text-emerald-500' : 'text-slate-400'} hover:text-purple-600 transition-colors`}
                             value={item.status}
                             onChange={(e) => handleQuickStatusUpdate(o.id, idx, e.target.value)}
                           >
@@ -554,7 +568,13 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete }) {
         <Plus size={18} className="inline mr-2" strokeWidth={3} /> Bestelling Invoeren
       </button>
 
-      <OrderTable list={grouped.active} title="Openstaande Bestellingen" />
+      <OrderTable list={grouped.active} title="Lopende Bestellingen" />
+
+      {grouped.ready.length > 0 && (
+        <div className="pt-4">
+          <OrderTable list={grouped.ready} title="Gereed voor Afhalen" isReadySection={true} />
+        </div>
+      )}
 
       {grouped.completed.length > 0 && (
         <div className="space-y-4 pt-10">
