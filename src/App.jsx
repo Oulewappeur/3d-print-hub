@@ -382,18 +382,13 @@ function Dashboard({ orders, products, filaments, settings }) {
           </div>
         </div>
 
-        {/* Benodigd Filament (Wacht) */}
+        {/* Benodigd Filament */}
         <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
-          <div className="flex items-center justify-between mb-8">
-             <div className="flex items-center gap-3">
-               <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><ShoppingCart size={20}/></div>
-               <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Benodigd Filament (Wacht)</h2>
-             </div>
-             <div className="px-4 py-2 bg-purple-50 text-purple-600 rounded-2xl text-[10px] font-black uppercase">
-               Totaal: {Math.round(stats.totalNeededWeight)}g
-             </div>
+          <div className="flex items-center gap-3 mb-8">
+             <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><ShoppingCart size={20}/></div>
+             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Benodigd Filament</h2>
           </div>
-          <div className="space-y-4 flex-1">
+          <div className="space-y-4 flex-1 overflow-y-auto">
              {stats.filamentNeeds.length === 0 ? (
                <div className="py-8 text-center text-xs text-slate-300 italic font-bold">Geen filament nodig</div>
              ) : (
@@ -414,20 +409,20 @@ function Dashboard({ orders, products, filaments, settings }) {
                ))
              )}
           </div>
-        </div>
-
-        {/* Totaal Verbruikt Filament Breakdown */}
-        <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
-          <div className="flex items-center justify-between mb-8">
-             <div className="flex items-center gap-3">
-               <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><History size={20}/></div>
-               <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Verbruik Historie</h2>
-             </div>
-             <div className="px-4 py-2 bg-slate-100 text-slate-400 rounded-2xl text-[10px] font-black uppercase">
-               Sum: {Math.round(stats.totalConsumedWeight / 1000)}kg
+          <div className="mt-6 pt-4 border-t border-slate-50 flex justify-end">
+            <div className="px-4 py-2 bg-purple-50 text-purple-600 rounded-2xl text-[10px] font-black uppercase">
+               Totaal: {Math.round(stats.totalNeededWeight)}g
              </div>
           </div>
-          <div className="space-y-4 flex-1">
+        </div>
+
+        {/* Verbruik Historie */}
+        <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
+          <div className="flex items-center gap-3 mb-8">
+             <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><History size={20}/></div>
+             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Verbruik Historie</h2>
+          </div>
+          <div className="space-y-4 flex-1 overflow-y-auto">
              {stats.filamentConsumedBreakdown.length === 0 ? (
                <div className="py-8 text-center text-xs text-slate-300 italic font-bold">Geen verbruikshistorie</div>
              ) : (
@@ -446,6 +441,11 @@ function Dashboard({ orders, products, filaments, settings }) {
                  </div>
                ))
              )}
+          </div>
+          <div className="mt-6 pt-4 border-t border-slate-50 flex justify-end">
+            <div className="px-4 py-2 bg-slate-100 text-slate-400 rounded-2xl text-[10px] font-black uppercase">
+               Totaal: {Math.round(stats.totalConsumedWeight / 1000)}kg
+             </div>
           </div>
         </div>
       </div>

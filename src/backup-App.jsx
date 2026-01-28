@@ -216,6 +216,7 @@ function Dashboard({ orders, products, filaments, settings }) {
     const filamentNeeds = {};
     const filamentConsumedBreakdown = {};
     const filamentKeyStockRemaining = {};
+    const pendingProductsBreakdown = {};
     
     // Bereken actuele voorraad per soort (key) voor tekort-meldingen (op basis van resterende rol inhoud)
     filaments.forEach(f => {
@@ -227,7 +228,8 @@ function Dashboard({ orders, products, filaments, settings }) {
     });
 
     const completedOrders = orders.filter(o => (o.items || []).every(i => i.status === 'Afgerond'));
-    const activeOrders = orders.filter(o => !(o.items || []).every(i => i.status === 'Afgerond'));
+    const readyOrders = orders.filter(o => (o.items || []).length > 0 && (o.items || []).every(i => i.status === 'Gereed'));
+    const waitingOrders = orders.filter(o => (o.items || []).some(i => i.status === 'In de wacht'));
 
     // Gerealiseerde stats EN Verbruik historie (op basis van Bestellingen)
     completedOrders.forEach(o => {
@@ -265,22 +267,30 @@ function Dashboard({ orders, products, filaments, settings }) {
     });
 
     // Benodigd filament (ENKEL VOOR 'IN DE WACHT') & Prognose omzet
-    activeOrders.forEach(o => {
+    orders.forEach(o => {
       (o.items || []).forEach(item => {
         if (item.status !== 'Afgerond') {
           pendingRevenue += (Number(item.price) || 0) * (Number(item.quantity) || 0);
         }
 
-        // Alleen meenemen voor 'In de wacht' orders
+        // Alleen meenemen voor 'In de wacht' items
         if (item.status === 'In de wacht') {
           const p = products.find(prod => prod.id === item.productId);
-          if (p && p.filaments) {
-            p.filaments.forEach(f => {
-              const needed = (f.weight * (Number(item.quantity) || 0));
-              if (!filamentNeeds[f.key]) filamentNeeds[f.key] = 0;
-              filamentNeeds[f.key] += needed;
-              totalNeededWeight += needed;
-            });
+          if (p) {
+            // Product breakdown voor "Nog te printen"
+            if (!pendingProductsBreakdown[p.id]) {
+              pendingProductsBreakdown[p.id] = { name: p.name, count: 0 };
+            }
+            pendingProductsBreakdown[p.id].count += (Number(item.quantity) || 0);
+
+            if (p.filaments) {
+              p.filaments.forEach(f => {
+                const needed = (f.weight * (Number(item.quantity) || 0));
+                if (!filamentNeeds[f.key]) filamentNeeds[f.key] = 0;
+                filamentNeeds[f.key] += needed;
+                totalNeededWeight += needed;
+              });
+            }
           }
         }
       });
@@ -292,9 +302,11 @@ function Dashboard({ orders, products, filaments, settings }) {
       pendingRevenue,
       totalNeededWeight,
       totalConsumedWeight,
-      openOrderCount: activeOrders.length, 
+      waitingOrderCount: waitingOrders.length, 
+      readyOrderCount: readyOrders.length,
       completedOrderCount: completedOrders.length,
       productStats: Object.values(productStats).sort((a,b) => b.revenue - a.revenue),
+      pendingProductsBreakdown: Object.values(pendingProductsBreakdown).sort((a,b) => b.count - a.count),
       filamentNeeds: Object.entries(filamentNeeds).map(([key, weight]) => ({
         key,
         weight,
@@ -311,16 +323,17 @@ function Dashboard({ orders, products, filaments, settings }) {
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-6">
         <StatCard title="Gerealiseerde Omzet" value={`€${stats.revenue.toFixed(2)}`} color="text-purple-600" />
         <StatCard title="Gerealiseerde Winst" value={`€${stats.profit.toFixed(2)}`} color="text-emerald-600" />
         <StatCard title="Te Realiseren Omzet" value={`€${stats.pendingRevenue.toFixed(2)}`} color="text-blue-500" />
         <StatCard title="Totaal Verbruikt" value={`${Math.round(stats.totalConsumedWeight)}g`} color="text-slate-500" />
-        <StatCard title="Open Bestellingen" value={stats.openOrderCount} color="text-orange-500" />
+        <StatCard title="Bestellingen in de wacht" value={stats.waitingOrderCount} color="text-orange-500" />
+        <StatCard title="Bestellingen Gereed" value={stats.readyOrderCount} color="text-emerald-500" />
         <StatCard title="Afgeronde Bestellingen" value={stats.completedOrderCount} color="text-slate-400" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-10">
         {/* Product Prestaties */}
         <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm">
           <div className="flex items-center gap-3 mb-8">
@@ -349,33 +362,53 @@ function Dashboard({ orders, products, filaments, settings }) {
           </div>
         </div>
 
-        {/* Benodigd Filament (In de wacht) */}
+        {/* Nog te printen producten */}
+        <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
+          <div className="flex items-center gap-3 mb-8">
+             <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Printer size={20}/></div>
+             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Nog te printen</h2>
+          </div>
+          <div className="space-y-4 flex-1">
+             {stats.pendingProductsBreakdown.length === 0 ? (
+               <div className="py-8 text-center text-xs text-slate-300 italic font-bold">Geen producten in de wacht</div>
+             ) : (
+               stats.pendingProductsBreakdown.map((item, idx) => (
+                 <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-transparent">
+                    <p className="text-xs font-bold text-slate-700">{item.name}</p>
+                    <p className="text-sm font-black text-blue-600 italic">{item.count}x</p>
+                 </div>
+               ))
+             )}
+          </div>
+        </div>
+
+        {/* Benodigd Filament (Wacht) */}
         <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-8">
              <div className="flex items-center gap-3">
-               <div className="p-2 bg-rose-50 text-rose-600 rounded-xl"><ShoppingCart size={20}/></div>
+               <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><ShoppingCart size={20}/></div>
                <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Benodigd Filament (Wacht)</h2>
              </div>
-             <div className="px-4 py-2 bg-rose-50 text-rose-600 rounded-2xl text-[10px] font-black uppercase">
+             <div className="px-4 py-2 bg-purple-50 text-purple-600 rounded-2xl text-[10px] font-black uppercase">
                Totaal: {Math.round(stats.totalNeededWeight)}g
              </div>
           </div>
           <div className="space-y-4 flex-1">
              {stats.filamentNeeds.length === 0 ? (
-               <div className="py-8 text-center text-xs text-slate-300 italic font-bold">Geen filament gereserveerd voor items in de wacht</div>
+               <div className="py-8 text-center text-xs text-slate-300 italic font-bold">Geen filament nodig</div>
              ) : (
                stats.filamentNeeds.map((need, idx) => (
-                 <div key={idx} className={`flex items-center justify-between p-4 rounded-2xl border ${need.isShortage ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-transparent'}`}>
+                 <div key={idx} className={`flex items-center justify-between p-4 rounded-2xl border ${need.isShortage ? 'bg-orange-50 border-orange-100' : 'bg-slate-50 border-transparent'}`}>
                     <div className="flex items-center gap-3">
                        <div className="w-4 h-4 rounded-full border border-white shadow-sm" style={{ backgroundColor: need.info?.colorCode || '#ccc' }}></div>
                        <div>
-                          <p className={`text-xs font-bold ${need.isShortage ? 'text-rose-700' : 'text-slate-700'}`}>{need.info ? `${need.info.brand} ${need.info.materialType}` : 'Onbekend Filament'}</p>
-                          <p className={`text-[9px] font-black uppercase ${need.isShortage ? 'text-rose-400' : 'text-slate-400'}`}>{need.info?.colorName || need.key}</p>
+                          <p className={`text-xs font-bold ${need.isShortage ? 'text-orange-700' : 'text-slate-700'}`}>{need.info ? `${need.info.brand} ${need.info.materialType}` : 'Onbekend'}</p>
+                          <p className="text-[9px] font-black uppercase text-slate-400">{need.info?.colorName || need.key}</p>
                        </div>
                     </div>
                     <div className="text-right flex items-center gap-2">
-                       {need.isShortage && <div className="text-rose-500 animate-pulse" title="Tekort dreigt! Bestel bij!"><AlertCircle size={14}/></div>}
-                       <p className={`text-sm font-black italic ${need.isShortage ? 'text-rose-600' : 'text-slate-600'}`}>{Math.round(need.weight)}g</p>
+                       {need.isShortage && <div className="text-orange-500 animate-pulse"><AlertCircle size={14}/></div>}
+                       <p className={`text-sm font-black italic ${need.isShortage ? 'text-orange-600' : 'text-slate-600'}`}>{Math.round(need.weight)}g</p>
                     </div>
                  </div>
                ))
@@ -383,11 +416,11 @@ function Dashboard({ orders, products, filaments, settings }) {
           </div>
         </div>
 
-        {/* Totaal Verbruikt Filament Breakdown (op basis van Bestellingen) */}
+        {/* Totaal Verbruikt Filament Breakdown */}
         <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-8">
              <div className="flex items-center gap-3">
-               <div className="p-2 bg-slate-50 text-slate-400 rounded-xl"><History size={20}/></div>
+               <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><History size={20}/></div>
                <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Verbruik Historie</h2>
              </div>
              <div className="px-4 py-2 bg-slate-100 text-slate-400 rounded-2xl text-[10px] font-black uppercase">
@@ -396,7 +429,7 @@ function Dashboard({ orders, products, filaments, settings }) {
           </div>
           <div className="space-y-4 flex-1">
              {stats.filamentConsumedBreakdown.length === 0 ? (
-               <div className="py-8 text-center text-xs text-slate-300 italic font-bold">Nog geen verbruik geregistreerd via bestellingen</div>
+               <div className="py-8 text-center text-xs text-slate-300 italic font-bold">Geen verbruikshistorie</div>
              ) : (
                stats.filamentConsumedBreakdown.slice(0, 6).map((item, idx) => (
                  <div key={idx} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl group hover:bg-slate-50 transition-colors">
@@ -422,9 +455,9 @@ function Dashboard({ orders, products, filaments, settings }) {
 
 function StatCard({ title, value, color }) {
   return (
-    <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-center">
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 text-center">{title}</p>
-      <p className={`text-2xl font-black italic tracking-tighter ${color}`}>{value}</p>
+    <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-center">
+      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 text-center leading-tight">{title}</p>
+      <p className={`text-xl font-black italic tracking-tighter ${color}`}>{value}</p>
     </div>
   );
 }
