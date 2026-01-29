@@ -345,12 +345,12 @@ function Dashboard({ orders, products, filaments, settings }) {
              <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><BarChart3 size={20}/></div>
              <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Product Prestaties</h2>
           </div>
-          <div className="overflow-hidden text-xs">
+          <div className="overflow-hidden text-xs text-slate-700 font-bold">
             <table className="w-full text-left">
                <thead className="uppercase font-black text-slate-300 border-b border-slate-50">
-                 <tr><th className="pb-4">Product</th><th className="pb-4 text-center">Aantal</th><th className="pb-4 text-right">Winst</th></tr>
+                 <tr><th className="pb-4 text-[9px] tracking-widest">Product</th><th className="pb-4 text-center text-[9px] tracking-widest">Aantal</th><th className="pb-4 text-right text-[9px] tracking-widest">Winst</th></tr>
                </thead>
-               <tbody className="divide-y divide-slate-50">
+               <tbody className="divide-y divide-slate-50 font-bold">
                  {stats.productStats.slice(0, 5).map((ps, idx) => (
                     <tr key={idx}>
                       <td className="py-4 font-bold text-slate-700">{ps.name}</td>
@@ -390,15 +390,15 @@ function Dashboard({ orders, products, filaments, settings }) {
                        <div className="w-4 h-4 rounded-full border border-white" style={{ backgroundColor: need.info?.colorCode || '#ccc' }}></div>
                        <div>
                           <p className="text-xs font-bold text-slate-700">{need.info ? `${need.info.brand} ${need.info.materialType}` : 'Onbekend'}</p>
-                          <p className="text-[9px] font-black uppercase text-slate-400">{need.info?.colorName || need.key}</p>
+                          <p className="text-[9px] font-black uppercase text-slate-500">{need.info?.colorName || need.key}</p>
                        </div>
                     </div>
-                    <p className="text-sm font-black italic text-slate-600">{Math.round(need.weight)}g</p>
+                    <p className="text-sm font-black italic text-slate-700">{Math.round(need.weight)}g</p>
                  </div>
              ))}
           </div>
           <div className="mt-6 pt-4 border-t border-slate-50 flex justify-end">
-             <div className="px-4 py-2 bg-purple-50 text-purple-600 rounded-2xl text-[10px] font-black uppercase font-black">Totaal: {Math.round(stats.totalNeededWeight)}g</div>
+             <div className="px-4 py-2 bg-purple-50 text-purple-600 rounded-2xl text-[10px] font-black uppercase font-black tracking-widest">Totaal: {Math.round(stats.totalNeededWeight)}g</div>
           </div>
         </div>
 
@@ -417,12 +417,12 @@ function Dashboard({ orders, products, filaments, settings }) {
                           <p className="text-[9px] font-black uppercase text-slate-400">{item.info?.colorName || item.key}</p>
                        </div>
                     </div>
-                    <p className="text-sm font-black text-slate-500 italic">{Math.round(item.weight)}g</p>
+                    <p className="text-sm font-black text-slate-600 italic">{Math.round(item.weight)}g</p>
                  </div>
              ))}
           </div>
           <div className="mt-6 pt-4 border-t border-slate-50 flex justify-end">
-            <div className="px-4 py-2 bg-slate-100 text-slate-500 rounded-2xl text-[10px] font-black uppercase font-black">Totaal: {Math.round(stats.totalConsumedWeight / 1000)}kg</div>
+            <div className="px-4 py-2 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase font-black tracking-widest">Totaal: {Math.round(stats.totalConsumedWeight / 1000)}kg</div>
           </div>
         </div>
       </div>
@@ -439,7 +439,8 @@ function DasLoodsSection({ orders, products, filaments, onAdd, onUpdate, onDelet
           <button 
             key={t}
             onClick={() => setSubTab(t)}
-            className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all border-none outline-none focus:outline-none appearance-none cursor-pointer ${subTab === t ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'text-slate-600 hover:text-purple-600'}`}
+            style={{ backgroundColor: subTab === t ? '#9333ea' : 'transparent' }}
+            className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all border-none outline-none focus:outline-none appearance-none cursor-pointer ${subTab === t ? 'text-white shadow-lg shadow-purple-200' : 'text-slate-700 hover:text-purple-600'}`}
           >
             {t}
           </button>
@@ -518,22 +519,22 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
         <div className={`p-1.5 rounded-lg ${isReadySection ? 'bg-emerald-100 text-emerald-600' : isCompletedSection ? 'bg-slate-100 text-slate-400' : 'bg-purple-100 text-purple-600'}`}>
           {isReadySection ? <Check size={14} strokeWidth={3} /> : isCompletedSection ? <Archive size={14} /> : <ListChecks size={14} />}
         </div>
-        <h2 className={`text-sm font-black uppercase tracking-widest ${isReadySection ? 'text-emerald-500' : 'text-slate-500'}`}>
+        <h2 className={`text-sm font-black uppercase tracking-widest ${isReadySection ? 'text-emerald-500' : 'text-slate-600'}`}>
           {title} ({list.length})
         </h2>
       </div>
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
-        <table className="w-full text-left text-xs">
+        <table className="w-full text-left text-xs font-bold text-slate-700">
           <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
-            <tr><th className="px-8 py-4">Klant</th><th className="px-8 py-4">Items & Status</th><th className="px-8 py-4">Bedrag</th><th className="px-8 py-4 text-right">Beheer</th></tr>
+            <tr><th className="px-8 py-4">Klant</th><th className="px-8 py-4">Items & Status</th><th className="px-8 py-4 text-center">Bedrag</th><th className="px-8 py-4 text-right">Beheer</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-50 font-bold">
             {list.sort((a,b) => new Date(b.orderDate) - new Date(a.orderDate)).map(o => (
               <tr key={o.id} className="hover:bg-slate-50/30 transition-colors group">
                 <td className="px-8 py-5">
                   <div className="flex items-center gap-2">
-                    <p className="text-slate-800">{o.customer}</p>
-                    {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-600"><MessageCircle size={14}/></a>}
+                    <p className="text-slate-900 font-bold text-sm">{o.customer}</p>
+                    {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-500 hover:text-purple-700 transition-colors"><MessageCircle size={14}/></a>}
                   </div>
                   <p className="text-[9px] text-slate-400 uppercase font-black">{o.orderDate}</p>
                 </td>
@@ -541,7 +542,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                    <div className="space-y-2">
                     {(o.items || []).map((item, idx) => (
                       <div key={idx} className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-500' : item.status === 'Gereed' ? 'bg-emerald-50 text-emerald-600' : 'bg-purple-50 text-purple-600'}`}>
+                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-600' : item.status === 'Gereed' ? 'bg-emerald-50 text-emerald-600' : 'bg-purple-50 text-purple-700'}`}>
                           {item.quantity}x {products.find(p => p.id === item.productId)?.name || '?'}
                         </span>
                         {!isCompletedSection && (
@@ -553,7 +554,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                     ))}
                    </div>
                 </td>
-                <td className="px-8 py-5 text-slate-900 font-black italic">
+                <td className="px-8 py-5 text-slate-900 font-black italic text-center">
                    €{(o.items || []).reduce((s, i) => s + (Number(i.price) * Number(i.quantity)), 0).toFixed(2)}
                 </td>
                 <td className="px-8 py-5 text-right flex justify-end gap-1">
@@ -572,7 +573,8 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
     <div className="space-y-10 animate-in fade-in duration-500">
       <button 
         onClick={() => { setEditingId(null); setFormData({ customer: '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], orderTime: new Date().toTimeString().slice(0,5), items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }], comments: '', isDasLoods: isDasLoodsFilter }); setShowModal(true); }} 
-        className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-xl border-none appearance-none cursor-pointer transition-all hover:bg-purple-700"
+        style={{ backgroundColor: '#9333ea' }}
+        className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-xl border-none appearance-none cursor-pointer transition-all hover:bg-purple-700"
       >
         <Plus size={18} className="inline mr-2" strokeWidth={3} /> {isDasLoodsFilter ? 'Das Loods Order' : 'Bestelling Invoeren'}
       </button>
@@ -582,7 +584,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
 
       {grouped.completed.length > 0 && (
         <div className="space-y-4">
-          <button onClick={() => setShowCompleted(!showCompleted)} className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500 border-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors appearance-none font-black tracking-widest">
+          <button onClick={() => setShowCompleted(!showCompleted)} className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600 border-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors appearance-none font-black tracking-widest">
             {showCompleted ? <ChevronDown size={14}/> : <ChevronRight size={14}/>} ARCHIEF TONEN
           </button>
           {showCompleted && <OrderTable list={grouped.completed} title="Afgeronde Bestellingen" isCompletedSection={true} />}
@@ -598,12 +600,12 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
           </div>
           <Input label="Chat Link" value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
           <div className="space-y-3">
-             <div className="flex justify-between items-center"><label className="text-[9px] font-black uppercase text-slate-500">Producten</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase bg-transparent border-none appearance-none cursor-pointer">+ Item</button></div>
+             <div className="flex justify-between items-center"><label className="text-[9px] font-black uppercase text-slate-600 tracking-widest">Producten</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase bg-transparent border-none appearance-none cursor-pointer">+ Item</button></div>
              <div className="space-y-3 bg-slate-50 p-4 rounded-2xl max-h-60 overflow-y-auto shadow-inner">
                {formData.items.map((it, idx) => (
                  <div key={idx} className="bg-white p-3 rounded-xl border-none relative shadow-sm">
-                   {formData.items.length > 1 && <button type="button" onClick={() => setFormData({...formData, items: formData.items.filter((_, i) => i !== idx)})} className="absolute top-1 right-1 text-slate-300 hover:text-rose-500 border-none appearance-none bg-transparent"><Minus size={14}/></button>}
-                   <select required className="w-full p-2 bg-slate-50 rounded-lg text-xs font-bold border-none appearance-none outline-none text-slate-800" value={it.productId} onChange={e => {
+                   {formData.items.length > 1 && <button type="button" onClick={() => setFormData({...formData, items: formData.items.filter((_, i) => i !== idx)})} className="absolute top-1 right-1 text-slate-400 hover:text-rose-500 border-none appearance-none bg-transparent"><Minus size={14}/></button>}
+                   <select required className="w-full p-2 bg-slate-50 rounded-lg text-xs font-bold border-none appearance-none outline-none text-slate-900 font-bold" value={it.productId} onChange={e => {
                      const ni = [...formData.items]; 
                      ni[idx].productId = e.target.value;
                      const p = products.find(prod => prod.id === e.target.value);
@@ -611,17 +613,17 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                      setFormData({...formData, items: ni});
                    }}>
                      <option value="">Selecteer Product...</option>
-                     {products.filter(p => !!p.isDasLoods === !!isDasLoodsFilter && p.status !== 'gearchiveerd').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                     {products.filter(p => !!p.isDasLoods === !!isDasLoodsFilter && p.status !== 'gearchiveerd').map(p => <option key={p.id} value={p.id} className="text-slate-900">{p.name}</option>)}
                    </select>
                    <div className="grid grid-cols-2 gap-2 mt-2">
-                     <input type="number" className="p-2 bg-slate-50 rounded-lg text-xs font-black border-none outline-none text-slate-800" value={it.quantity} onChange={e => {const ni = [...formData.items]; ni[idx].quantity = e.target.value; setFormData({...formData, items: ni});}} placeholder="Aantal" />
-                     <input type="number" step="0.01" className="p-2 bg-slate-50 rounded-lg text-xs font-black border-none outline-none text-slate-800" value={it.price} onChange={e => {const ni = [...formData.items]; ni[idx].price = e.target.value; setFormData({...formData, items: ni});}} placeholder="Prijs" />
+                     <input type="number" className="p-2 bg-slate-50 rounded-lg text-xs font-black border-none outline-none text-slate-900" value={it.quantity} onChange={e => {const ni = [...formData.items]; ni[idx].quantity = e.target.value; setFormData({...formData, items: ni});}} placeholder="Aantal" />
+                     <input type="number" step="0.01" className="p-2 bg-slate-50 rounded-lg text-xs font-black border-none outline-none text-slate-900" value={it.price} onChange={e => {const ni = [...formData.items]; ni[idx].price = e.target.value; setFormData({...formData, items: ni});}} placeholder="Prijs" />
                    </div>
                  </div>
                ))}
              </div>
           </div>
-          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Bestelling Opslaan</button>
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Bestelling Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -649,13 +651,14 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
     <div className="space-y-6 animate-in fade-in duration-500">
       <button 
         onClick={() => { setEditingId(null); setFormData({name:'', filaments:[], suggestedPrice:'', timeH:0, timeM:0, isDasLoods: isDasLoodsFilter }); setShowModal(true); }} 
-        className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none appearance-none cursor-pointer transition-all hover:bg-purple-700"
+        style={{ backgroundColor: '#9333ea' }}
+        className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none appearance-none cursor-pointer transition-all hover:bg-purple-700"
       >
         <Plus size={18} className="inline mr-2" strokeWidth={3} /> {isDasLoodsFilter ? 'Nieuw Das Loods Product' : 'Nieuw Product'}
       </button>
 
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
-        <table className="w-full text-left text-xs">
+        <table className="w-full text-left text-xs text-slate-700">
           <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
             <tr><th className="px-8 py-4">Product</th><th className="px-8 py-4 text-center">Voorraad</th><th className="px-8 py-4 text-right">Details</th></tr>
           </thead>
@@ -664,7 +667,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
               <React.Fragment key={p.id}>
                 <tr onClick={() => setExpanded({...expanded, [p.id]: !expanded[p.id]})} className="hover:bg-slate-50/50 cursor-pointer transition-colors">
                   <td className="px-8 py-5">
-                    <p className="text-slate-800">{p.name}</p>
+                    <p className="text-slate-900 font-bold text-sm">{p.name}</p>
                     <div className="flex gap-1 mt-1">
                       {(p.filaments || []).map(f => (
                         <div key={f.key} className="w-2.5 h-2.5 rounded-full border border-slate-100" style={{ backgroundColor: filaments.find(fil => `${fil.brand}-${fil.materialType}-${fil.colorName}` === f.key)?.colorCode }}></div>
@@ -684,9 +687,9 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                   <tr className="bg-slate-50/30 border-l-4 border-purple-500 animate-in slide-in-from-left-2 text-slate-800">
                     <td colSpan="3" className="px-10 py-6">
                        <div className="flex gap-10">
-                          <div><p className="text-[9px] uppercase font-black text-slate-500 mb-1">Gewicht</p><p className="text-sm font-bold">{p.weight}g</p></div>
-                          <div><p className="text-[9px] uppercase font-black text-slate-500 mb-1">Printtijd</p><p className="text-sm font-bold">{Math.floor(p.printTime / 60)}u {p.printTime % 60}m</p></div>
-                          <div><p className="text-[9px] uppercase font-black text-slate-500 mb-1">Kostprijs</p><p className="text-sm font-black text-slate-900">€{((p.filaments || []).reduce((s, f) => s + (f.weight * getFilamentGramPrice(filaments, f.key)), 0) + (p.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice).toFixed(2)}</p></div>
+                          <div><p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-widest">Gewicht</p><p className="text-sm font-bold text-slate-700">{p.weight}g</p></div>
+                          <div><p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-widest">Printtijd</p><p className="text-sm font-bold text-slate-700">{Math.floor(p.printTime / 60)}u {p.printTime % 60}m</p></div>
+                          <div><p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-widest">Kostprijs</p><p className="text-sm font-black text-slate-900 italic">€{((p.filaments || []).reduce((s, f) => s + (f.weight * getFilamentGramPrice(filaments, f.key)), 0) + (p.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice).toFixed(2)}</p></div>
                           <div className="flex-1 text-right flex items-center justify-end gap-2">
                              <button onClick={() => { setEditingId(p.id); setFormData({ ...p, timeH: Math.floor(p.printTime / 60), timeM: p.printTime % 60 }); setShowModal(true); }} className="p-2 bg-white rounded-xl shadow-sm text-purple-600 border-none appearance-none cursor-pointer hover:bg-purple-50 transition-all"><Edit3 size={16}/></button>
                              <button onClick={() => onDelete('products', p.id)} className="p-2 bg-white rounded-xl shadow-sm text-rose-500 border-none appearance-none cursor-pointer hover:bg-rose-50 transition-all"><Trash2 size={16}/></button>
@@ -714,23 +717,28 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
             <Input label="Minuten" type="number" value={formData.timeM} onChange={e => setFormData({...formData, timeM: e.target.value})} />
           </div>
           <div className="space-y-2">
-            <label className="text-[9px] font-black uppercase text-slate-500 font-black">Filament Behoefte</label>
+            <label className="text-[9px] font-black uppercase text-slate-600 font-black tracking-widest">Filament Behoefte</label>
             <div className="bg-slate-50 p-4 rounded-2xl max-h-48 overflow-y-auto space-y-2 shadow-inner">
               {uniqueFilamentTypes.map(type => {
                 const assign = formData.filaments.find(f => f.key === type.key);
                 return (
                   <div key={type.key} className="flex items-center gap-2">
-                    <button type="button" onClick={() => setFormData({...formData, filaments: assign ? formData.filaments.filter(f => f.key !== type.key) : [...formData.filaments, {key: type.key, weight: 0}]})} className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none appearance-none cursor-pointer transition-all ${assign ? 'bg-purple-600 text-white shadow-md shadow-purple-100' : 'bg-white text-slate-600 font-bold shadow-sm'}`}>
+                    <button 
+                      type="button" 
+                      onClick={() => setFormData({...formData, filaments: assign ? formData.filaments.filter(f => f.key !== type.key) : [...formData.filaments, {key: type.key, weight: 0}]})} 
+                      style={{ backgroundColor: assign ? '#9333ea' : '#fff' }}
+                      className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none appearance-none cursor-pointer transition-all ${assign ? 'text-white shadow-md shadow-purple-100' : 'text-slate-600 font-bold shadow-sm'}`}
+                    >
                       <div className="w-2.5 h-2.5 rounded-full border-none shadow-sm" style={{backgroundColor: type.color}}></div> {type.brand} {type.materialType} {type.colorName}
                     </button>
-                    {assign && <input type="number" className="w-16 p-2 bg-white rounded-lg text-[10px] font-black border-none outline-none shadow-sm text-slate-800" placeholder="G" value={assign.weight} onChange={e => setFormData({...formData, filaments: formData.filaments.map(f => f.key === type.key ? {...f, weight: Number(e.target.value)} : f)})} />}
+                    {assign && <input type="number" className="w-16 p-2 bg-white rounded-lg text-[10px] font-black border-none outline-none shadow-sm text-slate-900" placeholder="G" value={assign.weight} onChange={e => setFormData({...formData, filaments: formData.filaments.map(f => f.key === type.key ? {...f, weight: Number(e.target.value)} : f)})} />}
                   </div>
                 );
               })}
             </div>
           </div>
           <Input label="Verkoopprijs (€)" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} required />
-          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Product Opslaan</button>
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Product Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -757,13 +765,17 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <button onClick={() => { setEditingId(null); setFormData({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 }); setShowModal(true); }} className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none appearance-none cursor-pointer hover:bg-purple-700 transition-all">+ Rol Toevoegen</button>
-        <button onClick={() => setArchived(!archived)} className="text-[10px] font-black uppercase text-slate-500 border-none appearance-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors">{archived ? 'Toon Actief' : 'Toon Leeg'}</button>
+        <button 
+          onClick={() => { setEditingId(null); setFormData({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 }); setShowModal(true); }} 
+          style={{ backgroundColor: '#9333ea' }}
+          className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none appearance-none cursor-pointer hover:bg-purple-700 transition-all"
+        >+ Rol Toevoegen</button>
+        <button onClick={() => setArchived(!archived)} className="text-[10px] font-black uppercase text-slate-600 border-none appearance-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors tracking-widest">{archived ? 'Toon Actief' : 'Toon Leeg'}</button>
       </div>
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
-        <table className="w-full text-left text-xs text-slate-800">
+        <table className="w-full text-left text-xs text-slate-900">
           <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black border-b border-slate-100">
-            <tr><th className="px-8 py-4">Kleur</th><th className="px-8 py-4">Naam</th><th className="px-8 py-4">Voorraad</th><th className="px-8 py-4 text-right">Beheer</th></tr>
+            <tr><th className="px-8 py-4 tracking-widest">Kleur</th><th className="px-8 py-4 tracking-widest">Naam</th><th className="px-8 py-4 tracking-widest">Voorraad</th><th className="px-8 py-4 text-right tracking-widest">Beheer</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-50 font-bold">
             {grouped.map(g => {
@@ -773,20 +785,20 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                 <React.Fragment key={k}>
                   <tr onClick={() => setExpanded({...expanded, [k]: !expanded[k]})} className="hover:bg-slate-50/50 cursor-pointer transition-colors">
                     <td className="px-8 py-5"><div className="w-8 h-8 rounded-xl border-none shadow-inner" style={{backgroundColor: g.colorCode}}></div></td>
-                    <td className="px-8 py-5"><p className="text-slate-800">{g.brand} {g.materialType}</p><p className="text-[9px] text-slate-400 uppercase font-black">{g.colorName}</p></td>
+                    <td className="px-8 py-5"><p className="text-slate-900 font-bold text-sm">{g.brand} {g.materialType}</p><p className="text-[9px] text-slate-400 uppercase font-black">{g.colorName}</p></td>
                     <td className="px-8 py-5 font-black text-slate-900 italic text-lg">{Math.round(total)}g</td>
                     <td className="px-8 py-5 text-right text-slate-400">{expanded[k] ? <ChevronDown size={22} className="text-purple-600"/> : <ChevronRight size={22}/>}</td>
                   </tr>
                   {expanded[k] && g.rolls.map(r => (
                     <tr key={r.id} className="bg-slate-50/30 border-l-4 border-purple-500 animate-in slide-in-from-left-2">
-                      <td colSpan="2" className="px-10 py-4 text-[10px]"><p className="uppercase text-slate-500 font-black tracking-widest">Rol #{r.id.slice(-4)}</p></td>
-                      <td className="px-8 py-4 font-black italic text-slate-700">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
+                      <td colSpan="2" className="px-10 py-4 text-[10px] font-black uppercase text-slate-600 tracking-widest"><p className="uppercase text-slate-600 font-black tracking-widest">Rol #{r.id.slice(-4)}</p></td>
+                      <td className="px-8 py-4 font-black italic text-slate-800">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
                       <td className="px-8 py-4 text-right flex justify-end gap-2">
                         <div className="flex bg-white rounded-lg border-none p-1 px-3 items-center shadow-sm">
                           <Hash size={12} className="text-purple-500 mr-2" />
-                          <input type="number" placeholder="+/- G" className="w-12 text-[10px] font-black outline-none border-none p-0 bg-transparent appearance-none text-slate-800" onKeyDown={e => e.key === 'Enter' && (onUpdate('filaments', r.id, {usedWeight: Math.max(0, (r.usedWeight || 0) + Number(e.target.value))}), e.target.value = '')} />
+                          <input type="number" placeholder="+/- G" className="w-12 text-[10px] font-black outline-none border-none p-0 bg-transparent appearance-none text-slate-900" onKeyDown={e => e.key === 'Enter' && (onUpdate('filaments', r.id, {usedWeight: Math.max(0, (r.usedWeight || 0) + Number(e.target.value))}), e.target.value = '')} />
                         </div>
-                        <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2 bg-white rounded-xl shadow-sm text-slate-400 hover:text-rose-500 appearance-none border-none cursor-pointer transition-colors"><Archive size={16}/></button>
+                        <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-rose-500 appearance-none border-none cursor-pointer transition-colors"><Archive size={16}/></button>
                       </td>
                     </tr>
                   ))}
@@ -804,10 +816,10 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
           setShowModal(false);
         }} className="space-y-6">
           <div className="grid grid-cols-2 gap-4"><Input label="Merk" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} required /><Input label="Type" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required /></div>
-          <div className="grid grid-cols-2 gap-4"><Input label="Kleur" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-500 ml-2 tracking-widest font-black">Visueel</label><input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer shadow-inner appearance-none outline-none" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
+          <div className="grid grid-cols-2 gap-4"><Input label="Kleur" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-600 ml-2 tracking-widest font-black">Visueel</label><input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer shadow-inner appearance-none outline-none" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
           <div className="grid grid-cols-2 gap-4"><Input label="Prijs" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required /><Input label="Totaal (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required /></div>
           {!editingId && <Input label="Aantal rollen" type="number" min="1" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />}
-          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">In Voorraad Plaatsen</button>
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">In Voorraad Plaatsen</button>
         </form>
       </Modal>}
     </div>
@@ -821,7 +833,7 @@ function SettingsPanel({ settings, onSave }) {
       <h2 className="text-2xl font-black italic uppercase text-purple-600 tracking-tighter">Configuratie</h2>
       <Input label="Prijs p/kWh (€)" type="number" step="0.01" value={temp.kwhPrice} onChange={e => setTemp({...temp, kwhPrice: Number(e.target.value)})} />
       <Input label="Printer Verbruik (W)" type="number" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
-      <button onClick={() => onSave(temp)} className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-xl border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Instellingen Opslaan</button>
+      <button onClick={() => onSave(temp)} style={{ backgroundColor: '#9333ea' }} className="w-full py-5 text-white rounded-2xl font-black uppercase shadow-xl border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Instellingen Opslaan</button>
     </div>
   );
 }
@@ -829,8 +841,8 @@ function SettingsPanel({ settings, onSave }) {
 function Input({ label, ...props }) {
   return (
     <div className="space-y-1 flex-1">
-      <label className="text-[9px] font-black uppercase text-slate-500 ml-3 block tracking-widest font-black">{label}</label>
-      <input {...props} className="w-full p-4 bg-slate-50 rounded-[1.5rem] border-none font-bold text-slate-800 shadow-inner outline-none focus:bg-slate-100 transition-all appearance-none" />
+      <label className="text-[9px] font-black uppercase text-slate-600 ml-3 block tracking-widest font-black">{label}</label>
+      <input {...props} className="w-full p-4 bg-slate-50 rounded-[1.5rem] border-none font-bold text-slate-900 shadow-inner outline-none focus:bg-slate-100 transition-all appearance-none" />
     </div>
   );
 }
@@ -842,7 +854,7 @@ function Modal({ title, children, onClose }) {
         <div className="flex justify-between items-center mb-10"><h2 className="text-3xl font-black italic uppercase text-slate-900 tracking-tighter">{title}</h2><button onClick={onClose} className="text-slate-400 hover:text-rose-500 border-none bg-transparent appearance-none cursor-pointer transition-all"><Plus size={32} className="rotate-45" /></button></div>
         {children}
         <div className="mt-8 flex justify-center">
-          <button onClick={onClose} className="text-slate-500 font-black uppercase tracking-widest text-[10px] hover:text-purple-600 transition-colors border-none bg-transparent cursor-pointer">Venster Sluiten</button>
+          <button onClick={onClose} className="text-slate-600 font-black uppercase tracking-widest text-[10px] hover:text-purple-600 transition-colors border-none bg-transparent cursor-pointer">Venster Sluiten</button>
         </div>
       </div>
     </div>
