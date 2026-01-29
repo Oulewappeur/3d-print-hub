@@ -232,7 +232,6 @@ function Dashboard({ orders, products, filaments, settings }) {
 
     // Filtreer Das Loods orders uit financiële statistieken
     const regularOrders = orders.filter(o => !o.isDasLoods);
-    const dasLoodsOrders = orders.filter(o => o.isDasLoods);
 
     const completedOrders = regularOrders.filter(o => (o.items || []).every(i => i.status === 'Afgerond'));
     const readyOrders = regularOrders.filter(o => (o.items || []).length > 0 && (o.items || []).every(i => i.status === 'Gereed'));
@@ -261,8 +260,6 @@ function Dashboard({ orders, products, filaments, settings }) {
 
     // Verbruik historie & Filament behoeften (Inclusief Das Loods!)
     orders.forEach(o => {
-      const isCompleted = (o.items || []).every(i => i.status === 'Afgerond');
-      
       (o.items || []).forEach(item => {
         const p = products.find(prod => prod.id === item.productId);
         if (!p) return;
@@ -283,7 +280,6 @@ function Dashboard({ orders, products, filaments, settings }) {
 
         // Filament nodigheden & Nog te printen (Alleen voor In de Wacht)
         if (item.status === 'In de wacht') {
-          // Voor "Nog te printen" lijstje
           if (!pendingProductsBreakdown[p.id]) {
             pendingProductsBreakdown[p.id] = { name: p.name, count: 0 };
           }
@@ -438,12 +434,12 @@ function DasLoodsSection({ orders, products, filaments, onAdd, onUpdate, onDelet
   const [subTab, setSubTab] = useState('Bestellingen');
   return (
     <div className="space-y-10 animate-in fade-in duration-500">
-      <div className="flex items-center gap-4 bg-white p-2 rounded-2xl border border-slate-100 w-fit shadow-sm">
+      <div className="flex items-center gap-3 bg-slate-100/50 p-1.5 rounded-2xl w-fit">
         {['Bestellingen', 'Producten'].map(t => (
           <button 
             key={t}
             onClick={() => setSubTab(t)}
-            className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all border-none outline-none cursor-pointer ${subTab === t ? 'bg-purple-600 text-white shadow-md shadow-purple-100' : 'text-slate-400 hover:bg-slate-50'}`}
+            className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all border-none outline-none focus:outline-none appearance-none cursor-pointer ${subTab === t ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'text-slate-400 hover:text-purple-600'}`}
           >
             {t}
           </button>
@@ -526,18 +522,18 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
           {title} ({list.length})
         </h2>
       </div>
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
             <tr><th className="px-8 py-4">Klant</th><th className="px-8 py-4">Items & Status</th><th className="px-8 py-4">Bedrag</th><th className="px-8 py-4 text-right">Beheer</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-50 font-bold">
             {list.sort((a,b) => new Date(b.orderDate) - new Date(a.orderDate)).map(o => (
-              <tr key={o.id} className="hover:bg-slate-50/30 transition-colors">
+              <tr key={o.id} className="hover:bg-slate-50/30 transition-colors group">
                 <td className="px-8 py-5">
                   <div className="flex items-center gap-2">
                     <p className="text-slate-800">{o.customer}</p>
-                    {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-400"><MessageCircle size={14}/></a>}
+                    {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-600"><MessageCircle size={14}/></a>}
                   </div>
                   <p className="text-[9px] text-slate-400 uppercase font-black">{o.orderDate}</p>
                 </td>
@@ -545,11 +541,11 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                    <div className="space-y-2">
                     {(o.items || []).map((item, idx) => (
                       <div key={idx} className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${item.status === 'Gereed' ? 'bg-emerald-50 text-emerald-600' : 'bg-purple-50 text-purple-600'}`}>
+                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-400' : item.status === 'Gereed' ? 'bg-emerald-50 text-emerald-600' : 'bg-purple-50 text-purple-600'}`}>
                           {item.quantity}x {products.find(p => p.id === item.productId)?.name || '?'}
                         </span>
                         {!isCompletedSection && (
-                          <select className="bg-transparent border-none text-[9px] font-black uppercase text-slate-400 outline-none" value={item.status} onChange={(e) => handleQuickStatusUpdate(o.id, idx, e.target.value)}>
+                          <select className="bg-transparent border-none text-[9px] font-black uppercase text-slate-400 outline-none appearance-none cursor-pointer hover:text-purple-600 transition-colors" value={item.status} onChange={(e) => handleQuickStatusUpdate(o.id, idx, e.target.value)}>
                             {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         )}
@@ -561,8 +557,8 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                    €{(o.items || []).reduce((s, i) => s + (Number(i.price) * Number(i.quantity)), 0).toFixed(2)}
                 </td>
                 <td className="px-8 py-5 text-right flex justify-end gap-1">
-                  <button onClick={() => { setEditingId(o.id); setFormData(o); setShowModal(true); }} className="p-2 text-slate-300 hover:text-purple-600 bg-transparent border-none cursor-pointer"><Edit3 size={16}/></button>
-                  <button onClick={() => onDelete('orders', o.id)} className="p-2 text-slate-300 hover:text-rose-500 bg-transparent border-none cursor-pointer"><Trash2 size={16}/></button>
+                  <button onClick={() => { setEditingId(o.id); setFormData(o); setShowModal(true); }} className="p-2 text-slate-300 hover:text-purple-600 bg-transparent border-none appearance-none cursor-pointer transition-colors"><Edit3 size={16}/></button>
+                  <button onClick={() => onDelete('orders', o.id)} className="p-2 text-slate-300 hover:text-rose-500 bg-transparent border-none appearance-none cursor-pointer transition-colors"><Trash2 size={16}/></button>
                 </td>
               </tr>
             ))}
@@ -576,7 +572,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
     <div className="space-y-10 animate-in fade-in duration-500">
       <button 
         onClick={() => { setEditingId(null); setFormData({ customer: '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], orderTime: new Date().toTimeString().slice(0,5), items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }], comments: '', isDasLoods: isDasLoodsFilter }); setShowModal(true); }} 
-        className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-xl border-none cursor-pointer"
+        className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-xl border-none appearance-none cursor-pointer transition-all hover:bg-purple-700"
       >
         <Plus size={18} className="inline mr-2" strokeWidth={3} /> {isDasLoodsFilter ? 'Das Loods Order' : 'Bestelling Invoeren'}
       </button>
@@ -586,7 +582,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
 
       {grouped.completed.length > 0 && (
         <div className="space-y-4">
-          <button onClick={() => setShowCompleted(!showCompleted)} className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 border-none bg-transparent cursor-pointer">
+          <button onClick={() => setShowCompleted(!showCompleted)} className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 border-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors appearance-none">
             {showCompleted ? <ChevronDown size={14}/> : <ChevronRight size={14}/>} Archief
           </button>
           {showCompleted && <OrderTable list={grouped.completed} title="Afgeronde Bestellingen" isCompletedSection={true} />}
@@ -602,11 +598,11 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
           </div>
           <Input label="Chat Link" value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
           <div className="space-y-3">
-             <div className="flex justify-between items-center"><label className="text-[9px] font-black uppercase text-slate-400">Producten</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase bg-transparent border-none cursor-pointer">+ Item</button></div>
+             <div className="flex justify-between items-center"><label className="text-[9px] font-black uppercase text-slate-400">Producten</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase bg-transparent border-none appearance-none cursor-pointer">+ Item</button></div>
              <div className="space-y-3 bg-slate-50 p-4 rounded-2xl max-h-60 overflow-y-auto shadow-inner">
                {formData.items.map((it, idx) => (
-                 <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 relative shadow-sm">
-                   {formData.items.length > 1 && <button type="button" onClick={() => setFormData({...formData, items: formData.items.filter((_, i) => i !== idx)})} className="absolute top-1 right-1 text-slate-200 border-none bg-transparent"><Minus size={14}/></button>}
+                 <div key={idx} className="bg-white p-3 rounded-xl border-none relative shadow-sm">
+                   {formData.items.length > 1 && <button type="button" onClick={() => setFormData({...formData, items: formData.items.filter((_, i) => i !== idx)})} className="absolute top-1 right-1 text-slate-200 hover:text-rose-500 border-none appearance-none bg-transparent"><Minus size={14}/></button>}
                    <select required className="w-full p-2 bg-slate-50 rounded-lg text-xs font-bold border-none appearance-none outline-none" value={it.productId} onChange={e => {
                      const ni = [...formData.items]; 
                      ni[idx].productId = e.target.value;
@@ -625,7 +621,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                ))}
              </div>
           </div>
-          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer">Bestelling Opslaan</button>
+          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Bestelling Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -637,7 +633,6 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
   const [editingId, setEditingId] = useState(null);
   const [expanded, setExpanded] = useState({});
   const [formData, setFormData] = useState({ name: '', filaments: [], suggestedPrice: '', timeH: 0, timeM: 0, isDasLoods: isDasLoodsFilter });
-  const fileInputRef = useRef(null);
 
   const filteredProducts = useMemo(() => products.filter(p => !!p.isDasLoods === !!isDasLoodsFilter), [products, isDasLoodsFilter]);
 
@@ -654,12 +649,12 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
     <div className="space-y-6 animate-in fade-in duration-500">
       <button 
         onClick={() => { setEditingId(null); setFormData({name:'', filaments:[], suggestedPrice:'', timeH:0, timeM:0, isDasLoods: isDasLoodsFilter }); setShowModal(true); }} 
-        className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none cursor-pointer"
+        className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none appearance-none cursor-pointer transition-all hover:bg-purple-700"
       >
         <Plus size={18} className="inline mr-2" strokeWidth={3} /> {isDasLoodsFilter ? 'Nieuw Das Loods Product' : 'Nieuw Product'}
       </button>
 
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
             <tr><th className="px-8 py-4">Product</th><th className="px-8 py-4 text-center">Voorraad</th><th className="px-8 py-4 text-right">Details</th></tr>
@@ -667,23 +662,23 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
           <tbody className="divide-y divide-slate-50 font-bold">
             {filteredProducts.map(p => (
               <React.Fragment key={p.id}>
-                <tr onClick={() => setExpanded({...expanded, [p.id]: !expanded[p.id]})} className="hover:bg-slate-50/50 cursor-pointer">
+                <tr onClick={() => setExpanded({...expanded, [p.id]: !expanded[p.id]})} className="hover:bg-slate-50/50 cursor-pointer transition-colors">
                   <td className="px-8 py-5">
                     <p className="text-slate-800">{p.name}</p>
                     <div className="flex gap-1 mt-1">
                       {(p.filaments || []).map(f => (
-                        <div key={f.key} className="w-2.5 h-2.5 rounded-full border border-slate-200" style={{ backgroundColor: filaments.find(fil => `${fil.brand}-${fil.materialType}-${fil.colorName}` === f.key)?.colorCode }}></div>
+                        <div key={f.key} className="w-2.5 h-2.5 rounded-full border border-slate-100" style={{ backgroundColor: filaments.find(fil => `${fil.brand}-${fil.materialType}-${fil.colorName}` === f.key)?.colorCode }}></div>
                       ))}
                     </div>
                   </td>
                   <td className="px-8 py-5 text-center">
                      <div className="flex items-center justify-center gap-3">
-                        <button onClick={(e) => { e.stopPropagation(); onUpdate('products', p.id, {stockQuantity: (p.stockQuantity || 0) - 1}); }} className="p-1 bg-slate-50 text-slate-400 hover:text-rose-500 rounded border-none cursor-pointer"><Minus size={12}/></button>
+                        <button onClick={(e) => { e.stopPropagation(); onUpdate('products', p.id, {stockQuantity: (p.stockQuantity || 0) - 1}); }} className="p-1.5 bg-slate-50 text-slate-400 hover:text-rose-500 rounded-lg border-none appearance-none cursor-pointer transition-all"><Minus size={12}/></button>
                         <p className="font-black text-slate-700 w-8">{p.stockQuantity || 0}</p>
-                        <button onClick={(e) => { e.stopPropagation(); onUpdate('products', p.id, {stockQuantity: (p.stockQuantity || 0) + 1}); }} className="p-1 bg-slate-50 text-slate-400 hover:text-emerald-500 rounded border-none cursor-pointer"><Plus size={12}/></button>
+                        <button onClick={(e) => { e.stopPropagation(); onUpdate('products', p.id, {stockQuantity: (p.stockQuantity || 0) + 1}); }} className="p-1.5 bg-slate-50 text-slate-400 hover:text-emerald-500 rounded-lg border-none appearance-none cursor-pointer transition-all"><Plus size={12}/></button>
                       </div>
                   </td>
-                  <td className="px-8 py-5 text-right text-slate-300">{expanded[p.id] ? <ChevronDown size={20}/> : <ChevronRight size={20}/>}</td>
+                  <td className="px-8 py-5 text-right text-slate-300">{expanded[p.id] ? <ChevronDown size={20} className="text-purple-600"/> : <ChevronRight size={20}/>}</td>
                 </tr>
                 {expanded[p.id] && (
                   <tr className="bg-slate-50/30 border-l-4 border-purple-500 animate-in slide-in-from-left-2">
@@ -693,8 +688,8 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                           <div><p className="text-[9px] uppercase font-black text-slate-400 mb-1">Printtijd</p><p className="text-sm">{Math.floor(p.printTime / 60)}u {p.printTime % 60}m</p></div>
                           <div><p className="text-[9px] uppercase font-black text-slate-400 mb-1">Kostprijs</p><p className="text-sm font-black">€{((p.filaments || []).reduce((s, f) => s + (f.weight * getFilamentGramPrice(filaments, f.key)), 0) + (p.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice).toFixed(2)}</p></div>
                           <div className="flex-1 text-right flex items-center justify-end gap-2">
-                             <button onClick={() => { setEditingId(p.id); setFormData({ ...p, timeH: Math.floor(p.printTime / 60), timeM: p.printTime % 60 }); setShowModal(true); }} className="p-2 bg-white rounded-xl shadow-sm text-purple-600 border border-slate-100 cursor-pointer"><Edit3 size={16}/></button>
-                             <button onClick={() => onDelete('products', p.id)} className="p-2 bg-white rounded-xl shadow-sm text-rose-500 border border-slate-100 cursor-pointer"><Trash2 size={16}/></button>
+                             <button onClick={() => { setEditingId(p.id); setFormData({ ...p, timeH: Math.floor(p.printTime / 60), timeM: p.printTime % 60 }); setShowModal(true); }} className="p-2 bg-white rounded-xl shadow-sm text-purple-600 border-none appearance-none cursor-pointer hover:bg-purple-50 transition-all"><Edit3 size={16}/></button>
+                             <button onClick={() => onDelete('products', p.id)} className="p-2 bg-white rounded-xl shadow-sm text-rose-500 border-none appearance-none cursor-pointer hover:bg-rose-50 transition-all"><Trash2 size={16}/></button>
                           </div>
                        </div>
                     </td>
@@ -725,8 +720,8 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                 const assign = formData.filaments.find(f => f.key === type.key);
                 return (
                   <div key={type.key} className="flex items-center gap-2">
-                    <button type="button" onClick={() => setFormData({...formData, filaments: assign ? formData.filaments.filter(f => f.key !== type.key) : [...formData.filaments, {key: type.key, weight: 0}]})} className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none cursor-pointer ${assign ? 'bg-purple-600 text-white' : 'bg-white text-slate-400 font-bold shadow-sm'}`}>
-                      <div className="w-2.5 h-2.5 rounded-full" style={{backgroundColor: type.color}}></div> {type.brand} {type.materialType} {type.colorName}
+                    <button type="button" onClick={() => setFormData({...formData, filaments: assign ? formData.filaments.filter(f => f.key !== type.key) : [...formData.filaments, {key: type.key, weight: 0}]})} className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none appearance-none cursor-pointer transition-all ${assign ? 'bg-purple-600 text-white shadow-md shadow-purple-100' : 'bg-white text-slate-400 font-bold shadow-sm'}`}>
+                      <div className="w-2.5 h-2.5 rounded-full border-none shadow-sm" style={{backgroundColor: type.color}}></div> {type.brand} {type.materialType} {type.colorName}
                     </button>
                     {assign && <input type="number" className="w-16 p-2 bg-white rounded-lg text-[10px] font-black border-none outline-none shadow-sm" placeholder="G" value={assign.weight} onChange={e => setFormData({...formData, filaments: formData.filaments.map(f => f.key === type.key ? {...f, weight: Number(e.target.value)} : f)})} />}
                   </div>
@@ -735,7 +730,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
             </div>
           </div>
           <Input label="Verkoopprijs (€)" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} required />
-          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer">Product Opslaan</button>
+          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic transition-all hover:bg-purple-700">Product Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -762,10 +757,10 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <button onClick={() => { setEditingId(null); setFormData({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 }); setShowModal(true); }} className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none cursor-pointer">+ Rol Toevoegen</button>
-        <button onClick={() => setArchived(!archived)} className="text-[10px] font-black uppercase text-slate-400 border-none bg-transparent cursor-pointer transition-colors">{archived ? 'Toon Actief' : 'Toon Leeg'}</button>
+        <button onClick={() => { setEditingId(null); setFormData({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 }); setShowModal(true); }} className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none appearance-none cursor-pointer hover:bg-purple-700 transition-all">+ Rol Toevoegen</button>
+        <button onClick={() => setArchived(!archived)} className="text-[10px] font-black uppercase text-slate-400 border-none appearance-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors">{archived ? 'Toon Actief' : 'Toon Leeg'}</button>
       </div>
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black border-b border-slate-100">
             <tr><th className="px-8 py-4">Kleur</th><th className="px-8 py-4">Naam</th><th className="px-8 py-4">Voorraad</th><th className="px-8 py-4 text-right">Beheer</th></tr>
@@ -776,22 +771,22 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
               const total = g.rolls.reduce((s, r) => s + (r.totalWeight - (r.usedWeight || 0)), 0);
               return (
                 <React.Fragment key={k}>
-                  <tr onClick={() => setExpanded({...expanded, [k]: !expanded[k]})} className="hover:bg-slate-50/50 cursor-pointer">
-                    <td className="px-8 py-5"><div className="w-8 h-8 rounded-xl border border-slate-100 shadow-inner" style={{backgroundColor: g.colorCode}}></div></td>
+                  <tr onClick={() => setExpanded({...expanded, [k]: !expanded[k]})} className="hover:bg-slate-50/50 cursor-pointer transition-colors">
+                    <td className="px-8 py-5"><div className="w-8 h-8 rounded-xl border-none shadow-inner" style={{backgroundColor: g.colorCode}}></div></td>
                     <td className="px-8 py-5"><p className="text-slate-800">{g.brand} {g.materialType}</p><p className="text-[9px] text-slate-400 uppercase font-black">{g.colorName}</p></td>
                     <td className="px-8 py-5 font-black text-slate-700 italic text-lg">{Math.round(total)}g</td>
-                    <td className="px-8 py-5 text-right text-slate-300">{expanded[k] ? <ChevronDown size={22}/> : <ChevronRight size={22}/>}</td>
+                    <td className="px-8 py-5 text-right text-slate-300">{expanded[k] ? <ChevronDown size={22} className="text-purple-600"/> : <ChevronRight size={22}/>}</td>
                   </tr>
                   {expanded[k] && g.rolls.map(r => (
-                    <tr key={r.id} className="bg-slate-50/30 border-l-4 border-purple-500">
+                    <tr key={r.id} className="bg-slate-50/30 border-l-4 border-purple-500 animate-in slide-in-from-left-2">
                       <td colSpan="2" className="px-10 py-4 text-[10px]"><p className="uppercase text-slate-400 font-black">Rol #{r.id.slice(-4)}</p></td>
                       <td className="px-8 py-4 font-black italic">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
                       <td className="px-8 py-4 text-right flex justify-end gap-2">
-                        <div className="flex bg-white rounded-lg border border-slate-200 p-1 px-3 items-center shadow-sm">
+                        <div className="flex bg-white rounded-lg border-none p-1 px-3 items-center shadow-sm">
                           <Hash size={12} className="text-purple-500 mr-2" />
-                          <input type="number" placeholder="+/- G" className="w-12 text-[10px] font-bold outline-none border-none p-0 bg-transparent" onKeyDown={e => e.key === 'Enter' && (onUpdate('filaments', r.id, {usedWeight: Math.max(0, (r.usedWeight || 0) + Number(e.target.value))}), e.target.value = '')} />
+                          <input type="number" placeholder="+/- G" className="w-12 text-[10px] font-bold outline-none border-none p-0 bg-transparent appearance-none" onKeyDown={e => e.key === 'Enter' && (onUpdate('filaments', r.id, {usedWeight: Math.max(0, (r.usedWeight || 0) + Number(e.target.value))}), e.target.value = '')} />
                         </div>
-                        <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2 bg-white rounded-xl shadow-sm text-slate-300 hover:text-rose-500 cursor-pointer border-none"><Archive size={16}/></button>
+                        <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2 bg-white rounded-xl shadow-sm text-slate-300 hover:text-rose-500 appearance-none border-none cursor-pointer transition-colors"><Archive size={16}/></button>
                       </td>
                     </tr>
                   ))}
@@ -809,10 +804,10 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
           setShowModal(false);
         }} className="space-y-6">
           <div className="grid grid-cols-2 gap-4"><Input label="Merk" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} required /><Input label="Type" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required /></div>
-          <div className="grid grid-cols-2 gap-4"><Input label="Kleur" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest font-black">Visueel</label><input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer shadow-inner appearance-none" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
+          <div className="grid grid-cols-2 gap-4"><Input label="Kleur" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest font-black">Visueel</label><input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer shadow-inner appearance-none outline-none" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
           <div className="grid grid-cols-2 gap-4"><Input label="Prijs" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required /><Input label="Totaal (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required /></div>
           {!editingId && <Input label="Aantal rollen" type="number" min="1" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />}
-          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none cursor-pointer italic">In Voorraad Plaatsen</button>
+          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">In Voorraad Plaatsen</button>
         </form>
       </Modal>}
     </div>
@@ -826,7 +821,7 @@ function SettingsPanel({ settings, onSave }) {
       <h2 className="text-2xl font-black italic uppercase text-purple-600 tracking-tighter">Configuratie</h2>
       <Input label="Prijs p/kWh (€)" type="number" step="0.01" value={temp.kwhPrice} onChange={e => setTemp({...temp, kwhPrice: Number(e.target.value)})} />
       <Input label="Printer Verbruik (W)" type="number" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
-      <button onClick={() => onSave(temp)} className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-xl border-none cursor-pointer italic">Instellingen Opslaan</button>
+      <button onClick={() => onSave(temp)} className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-xl border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Instellingen Opslaan</button>
     </div>
   );
 }
@@ -835,7 +830,7 @@ function Input({ label, ...props }) {
   return (
     <div className="space-y-1 flex-1">
       <label className="text-[9px] font-black uppercase text-slate-400 ml-3 block tracking-widest font-black">{label}</label>
-      <input {...props} className="w-full p-4 bg-slate-50 rounded-[1.5rem] border-none font-bold text-slate-700 shadow-inner outline-none focus:bg-slate-100 transition-all" />
+      <input {...props} className="w-full p-4 bg-slate-50 rounded-[1.5rem] border-none font-bold text-slate-700 shadow-inner outline-none focus:bg-slate-100 transition-all appearance-none" />
     </div>
   );
 }
@@ -843,8 +838,8 @@ function Input({ label, ...props }) {
 function Modal({ title, children, onClose }) {
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-6 z-50 animate-in fade-in duration-300">
-      <div className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh] border border-white relative slide-in-from-bottom-4 animate-in duration-500">
-        <div className="flex justify-between items-center mb-10"><h2 className="text-3xl font-black italic uppercase text-slate-900 tracking-tighter">{title}</h2><button onClick={onClose} className="text-slate-200 hover:text-rose-500 border-none bg-transparent cursor-pointer transition-all"><Plus size={32} className="rotate-45" /></button></div>
+      <div className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh] border-none relative slide-in-from-bottom-4 animate-in duration-500">
+        <div className="flex justify-between items-center mb-10"><h2 className="text-3xl font-black italic uppercase text-slate-900 tracking-tighter">{title}</h2><button onClick={onClose} className="text-slate-200 hover:text-rose-500 border-none bg-transparent appearance-none cursor-pointer transition-all"><Plus size={32} className="rotate-45" /></button></div>
         {children}
       </div>
     </div>
