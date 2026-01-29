@@ -229,10 +229,15 @@ function Dashboard({ orders, products, filaments, settings }) {
       (o.items || []).forEach(item => {
         const p = products.find(prod => prod.id === item.productId);
         if (!p) return;
+
+        const quantity = Number(item.quantity) || 0;
+        const ready = Number(item.readyQuantity) || 0;
+        const remaining = Math.max(0, quantity - ready);
+
         if (item.status === 'Afgerond') {
           if (p.filaments) {
             p.filaments.forEach(f => {
-              const weightContribution = f.weight * (Number(item.quantity) || 0);
+              const weightContribution = f.weight * quantity;
               totalConsumedWeight += weightContribution;
               if (!filamentConsumedBreakdown[f.key]) {
                 filamentConsumedBreakdown[f.key] = { weight: 0, info: filaments.find(fil => `${fil.brand}-${fil.materialType}-${fil.colorName}` === f.key) };
@@ -241,20 +246,26 @@ function Dashboard({ orders, products, filaments, settings }) {
             });
           }
         }
+
+        // Enkel wat nog werkelijk geprint moet worden (remaining)
         if (item.status === 'In de wacht' || item.status === 'Printen') {
-          if (!pendingProductsBreakdown[p.id]) pendingProductsBreakdown[p.id] = { name: p.name, count: 0 };
-          pendingProductsBreakdown[p.id].count += (Number(item.quantity) || 0);
-          if (p.filaments) {
-            p.filaments.forEach(f => {
-              const needed = (f.weight * (Number(item.quantity) || 0));
-              if (!filamentNeeds[f.key]) filamentNeeds[f.key] = 0;
-              filamentNeeds[f.key] += needed;
-              totalNeededWeight += needed;
-            });
+          if (remaining > 0) {
+            if (!pendingProductsBreakdown[p.id]) pendingProductsBreakdown[p.id] = { name: p.name, count: 0 };
+            pendingProductsBreakdown[p.id].count += remaining;
+
+            if (p.filaments) {
+              p.filaments.forEach(f => {
+                const needed = (f.weight * remaining);
+                if (!filamentNeeds[f.key]) filamentNeeds[f.key] = 0;
+                filamentNeeds[f.key] += needed;
+                totalNeededWeight += needed;
+              });
+            }
           }
         }
+        
         if (!o.isDasLoods && item.status !== 'Afgerond') {
-          pendingRevenue += (Number(item.price) || 0) * (Number(item.quantity) || 0);
+          pendingRevenue += (Number(item.price) || 0) * remaining;
         }
       });
     });
@@ -311,7 +322,7 @@ function Dashboard({ orders, products, filaments, settings }) {
         <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
           <div className="flex items-center gap-3 mb-8">
              <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Printer size={20}/></div>
-             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">In Wacht</h2>
+             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Nog te printen</h2>
           </div>
           <div className="space-y-4 flex-1">
              {stats.pendingProductsBreakdown.map((item, idx) => (
@@ -320,6 +331,7 @@ function Dashboard({ orders, products, filaments, settings }) {
                     <p className="text-sm font-black text-blue-600 italic">{item.count}x</p>
                  </div>
              ))}
+             {stats.pendingProductsBreakdown.length === 0 && <p className="text-[10px] font-black uppercase text-slate-300 text-center py-10 tracking-widest">Alles is gereed!</p>}
           </div>
         </div>
 
