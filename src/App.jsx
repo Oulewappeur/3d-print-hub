@@ -87,28 +87,6 @@ const TABS = {
 
 const ORDER_STATUSES = ['In de wacht', 'Printen', 'Gereed', 'Afgerond'];
 
-// Hulpmiddel om G-code metadata te parsen (Cura & Bambu)
-const parseMetadataFromText = (text) => {
-  const result = { time: 0, weight: 0, multiMaterial: [] };
-  const timeMatch = text.match(/estimated printing time.*=\s*(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?/i);
-  if (timeMatch) {
-    const hours = parseInt(timeMatch[1] || 0);
-    const mins = parseInt(timeMatch[2] || 0);
-    result.time = (hours * 60) + mins;
-  } else {
-    const curaTimeMatch = text.match(/;TIME:(\d+)/i);
-    if (curaTimeMatch) result.time = Math.round(parseInt(curaTimeMatch[1]) / 60);
-  }
-  const weightMatches = [...text.matchAll(/filament used \[g\]\s*=\s*([\d.]+)/gi)];
-  if (weightMatches.length > 0) {
-    result.weight = weightMatches.reduce((a, b) => a + parseFloat(b[1]), 0);
-  } else {
-    const curaFilamentMatch = text.match(/;Filament used:\s*([\d.]+)/i);
-    if (curaFilamentMatch) result.weight = Math.round(parseFloat(curaFilamentMatch[1]) * 2.98); 
-  }
-  return result;
-};
-
 const getFilamentGramPrice = (filaments, key) => {
   const activeRolls = filaments.filter(f => f.status === 'actief' && `${f.brand}-${f.materialType}-${f.colorName}` === key);
   const targetRoll = activeRolls.length > 0 ? activeRolls[0] : filaments.find(f => `${f.brand}-${f.materialType}-${f.colorName}` === key);
@@ -125,12 +103,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!window.JSZip) {
-      const script = document.createElement('script');
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
-      script.async = true;
-      document.body.appendChild(script);
-    }
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -175,7 +147,7 @@ export default function App() {
       <nav className="w-full md:w-72 bg-white border-r border-slate-100 p-6 flex flex-col gap-2 z-20 shadow-sm overflow-y-auto">
         <div className="text-xl font-black text-purple-600 mb-10 flex items-center gap-3 px-2 italic text-balance">
           <div className="p-2 bg-purple-600 rounded-xl text-white shadow-md shadow-purple-100"><Printer size={20} strokeWidth={3} /></div>
-          Rosevalley 3D Print Hub
+          Rosevalley 3D Hub
         </div>
         <div className="flex flex-col gap-2 flex-1">
           {Object.values(TABS).map(tab => (
@@ -221,7 +193,6 @@ function Dashboard({ orders, products, filaments, settings }) {
     const filamentKeyStockRemaining = {};
     const pendingProductsBreakdown = {};
     
-    // Bereken actuele voorraad
     filaments.forEach(f => {
       if (f.status === 'leeg') return;
       const key = `${f.brand}-${f.materialType}-${f.colorName}`;
@@ -230,26 +201,22 @@ function Dashboard({ orders, products, filaments, settings }) {
       filamentKeyStockRemaining[key] += remaining;
     });
 
-    // Filtreer Das Loods orders uit financiële statistieken
     const regularOrders = orders.filter(o => !o.isDasLoods);
 
     const completedOrders = regularOrders.filter(o => (o.items || []).every(i => i.status === 'Afgerond'));
     const readyOrders = regularOrders.filter(o => (o.items || []).length > 0 && (o.items || []).every(i => i.status === 'Gereed'));
     const waitingOrders = regularOrders.filter(o => (o.items || []).some(i => i.status === 'In de wacht'));
 
-    // Gerealiseerde stats (Alleen Regulier)
     completedOrders.forEach(o => {
       (o.items || []).forEach(item => {
         const itemRev = (Number(item.price) || 0) * (Number(item.quantity) || 0);
         revenue += itemRev;
-        
         const p = products.find(prod => prod.id === item.productId);
         if (p) {
           const matCost = (p.filaments || []).reduce((s, f) => s + (f.weight * getFilamentGramPrice(filaments, f.key)), 0);
           const energy = (p.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice;
           const totalItemCost = (matCost + energy) * (Number(item.quantity) || 0);
           cost += totalItemCost;
-
           if (!productStats[p.id]) productStats[p.id] = { name: p.name, revenue: 0, profit: 0, count: 0 };
           productStats[p.id].revenue += itemRev;
           productStats[p.id].profit += (itemRev - totalItemCost);
@@ -258,13 +225,10 @@ function Dashboard({ orders, products, filaments, settings }) {
       });
     });
 
-    // Verbruik historie & Filament behoeften (Inclusief Das Loods!)
     orders.forEach(o => {
       (o.items || []).forEach(item => {
         const p = products.find(prod => prod.id === item.productId);
         if (!p) return;
-
-        // Verbruik Historie (Afgeronde items)
         if (item.status === 'Afgerond') {
           if (p.filaments) {
             p.filaments.forEach(f => {
@@ -277,14 +241,9 @@ function Dashboard({ orders, products, filaments, settings }) {
             });
           }
         }
-
-        // Filament nodigheden & Nog te printen (Alleen voor In de Wacht)
-        if (item.status === 'In de wacht') {
-          if (!pendingProductsBreakdown[p.id]) {
-            pendingProductsBreakdown[p.id] = { name: p.name, count: 0 };
-          }
+        if (item.status === 'In de wacht' || item.status === 'Printen') {
+          if (!pendingProductsBreakdown[p.id]) pendingProductsBreakdown[p.id] = { name: p.name, count: 0 };
           pendingProductsBreakdown[p.id].count += (Number(item.quantity) || 0);
-
           if (p.filaments) {
             p.filaments.forEach(f => {
               const needed = (f.weight * (Number(item.quantity) || 0));
@@ -294,8 +253,6 @@ function Dashboard({ orders, products, filaments, settings }) {
             });
           }
         }
-
-        // Omzet prognose (Alleen Regulier)
         if (!o.isDasLoods && item.status !== 'Afgerond') {
           pendingRevenue += (Number(item.price) || 0) * (Number(item.quantity) || 0);
         }
@@ -303,27 +260,15 @@ function Dashboard({ orders, products, filaments, settings }) {
     });
 
     return { 
-      revenue, 
-      profit: revenue - cost, 
-      pendingRevenue,
-      totalNeededWeight,
-      totalConsumedWeight,
-      waitingOrderCount: waitingOrders.length, 
-      readyOrderCount: readyOrders.length,
-      completedOrderCount: completedOrders.length,
+      revenue, profit: revenue - cost, pendingRevenue, totalNeededWeight, totalConsumedWeight,
+      waitingOrderCount: waitingOrders.length, readyOrderCount: readyOrders.length, completedOrderCount: completedOrders.length,
       productStats: Object.values(productStats).sort((a,b) => b.revenue - a.revenue),
       pendingProductsBreakdown: Object.values(pendingProductsBreakdown).sort((a,b) => b.count - a.count),
       filamentNeeds: Object.entries(filamentNeeds).map(([key, weight]) => ({
-        key,
-        weight,
-        isShortage: weight > (filamentKeyStockRemaining[key] || 0),
+        key, weight, isShortage: weight > (filamentKeyStockRemaining[key] || 0),
         info: filaments.find(f => `${f.brand}-${f.materialType}-${f.colorName}` === key)
       })).sort((a,b) => b.weight - a.weight),
-      filamentConsumedBreakdown: Object.entries(filamentConsumedBreakdown).map(([key, data]) => ({
-        key,
-        weight: data.weight,
-        info: data.info
-      })).sort((a,b) => b.weight - a.weight)
+      filamentConsumedBreakdown: Object.entries(filamentConsumedBreakdown).map(([key, data]) => ({ key, weight: data.weight, info: data.info })).sort((a,b) => b.weight - a.weight)
     };
   }, [orders, products, filaments, settings]);
 
@@ -334,21 +279,21 @@ function Dashboard({ orders, products, filaments, settings }) {
         <StatCard title="Reguliere Winst" value={`€${stats.profit.toFixed(2)}`} color="text-emerald-600" />
         <StatCard title="Te Realiseren Omzet" value={`€${stats.pendingRevenue.toFixed(2)}`} color="text-blue-500" />
         <StatCard title="Totaal Verbruikt" value={`${Math.round(stats.totalConsumedWeight)}g`} color="text-slate-500" />
-        <StatCard title="Bestellingen in de wacht" value={stats.waitingOrderCount} color="text-orange-500" />
+        <StatCard title="Bestellingen wacht" value={stats.waitingOrderCount} color="text-orange-500" />
         <StatCard title="Bestellingen Gereed" value={stats.readyOrderCount} color="text-emerald-500" />
-        <StatCard title="Afgeronde Bestellingen" value={stats.completedOrderCount} color="text-slate-400" />
+        <StatCard title="Afgerond" value={stats.completedOrderCount} color="text-slate-400" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-10">
         <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm">
           <div className="flex items-center gap-3 mb-8">
              <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><BarChart3 size={20}/></div>
-             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Product Prestaties</h2>
+             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Prestaties</h2>
           </div>
           <div className="overflow-hidden text-xs text-slate-700 font-bold">
             <table className="w-full text-left">
                <thead className="uppercase font-black text-slate-300 border-b border-slate-50">
-                 <tr><th className="pb-4 text-[9px] tracking-widest">Product</th><th className="pb-4 text-center text-[9px] tracking-widest">Aantal</th><th className="pb-4 text-right text-[9px] tracking-widest">Winst</th></tr>
+                 <tr><th className="pb-4">Product</th><th className="pb-4 text-center">Aantal</th><th className="pb-4 text-right">Winst</th></tr>
                </thead>
                <tbody className="divide-y divide-slate-50 font-bold">
                  {stats.productStats.slice(0, 5).map((ps, idx) => (
@@ -366,7 +311,7 @@ function Dashboard({ orders, products, filaments, settings }) {
         <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
           <div className="flex items-center gap-3 mb-8">
              <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Printer size={20}/></div>
-             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Nog te printen</h2>
+             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">In Wacht</h2>
           </div>
           <div className="space-y-4 flex-1">
              {stats.pendingProductsBreakdown.map((item, idx) => (
@@ -381,7 +326,7 @@ function Dashboard({ orders, products, filaments, settings }) {
         <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
           <div className="flex items-center gap-3 mb-8">
              <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><ShoppingCart size={20}/></div>
-             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Benodigd Filament</h2>
+             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Filament Nood</h2>
           </div>
           <div className="space-y-4 flex-1 overflow-y-auto">
              {stats.filamentNeeds.map((need, idx) => (
@@ -397,15 +342,12 @@ function Dashboard({ orders, products, filaments, settings }) {
                  </div>
              ))}
           </div>
-          <div className="mt-6 pt-4 border-t border-slate-50 flex justify-end">
-             <div className="px-4 py-2 bg-purple-50 text-purple-600 rounded-2xl text-[10px] font-black uppercase font-black tracking-widest">Totaal: {Math.round(stats.totalNeededWeight)}g</div>
-          </div>
         </div>
 
         <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
           <div className="flex items-center gap-3 mb-8">
              <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><History size={20}/></div>
-             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Verbruik Historie</h2>
+             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Historie</h2>
           </div>
           <div className="space-y-4 flex-1 overflow-y-auto">
              {stats.filamentConsumedBreakdown.slice(0, 6).map((item, idx) => (
@@ -420,9 +362,6 @@ function Dashboard({ orders, products, filaments, settings }) {
                     <p className="text-sm font-black text-slate-600 italic">{Math.round(item.weight)}g</p>
                  </div>
              ))}
-          </div>
-          <div className="mt-6 pt-4 border-t border-slate-50 flex justify-end">
-            <div className="px-4 py-2 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase font-black tracking-widest">Totaal: {Math.round(stats.totalConsumedWeight / 1000)}kg</div>
           </div>
         </div>
       </div>
@@ -440,13 +379,12 @@ function DasLoodsSection({ orders, products, filaments, onAdd, onUpdate, onDelet
             key={t}
             onClick={() => setSubTab(t)}
             style={{ backgroundColor: subTab === t ? '#9333ea' : 'transparent' }}
-            className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all border-none outline-none focus:outline-none appearance-none cursor-pointer ${subTab === t ? 'text-white shadow-lg shadow-purple-200' : 'text-slate-700 hover:text-purple-600'}`}
+            className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all border-none outline-none appearance-none cursor-pointer ${subTab === t ? 'text-white shadow-lg shadow-purple-200' : 'text-slate-700 hover:text-purple-600 font-bold'}`}
           >
             {t}
           </button>
         ))}
       </div>
-
       {subTab === 'Bestellingen' ? (
         <OrderList orders={orders} products={products} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} isDasLoodsFilter={true} />
       ) : (
@@ -470,11 +408,11 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
   const [editingId, setEditingId] = useState(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [formData, setFormData] = useState({ 
-    customer: '', 
+    customer: isDasLoodsFilter ? 'Das Loods' : '', 
     messengerLink: '', 
     orderDate: new Date().toISOString().split('T')[0], 
     orderTime: new Date().toTimeString().slice(0,5),
-    items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }],
+    items: [{ productId: '', quantity: 1, readyQuantity: 0, price: '', status: 'In de wacht' }],
     comments: '',
     isDasLoods: isDasLoodsFilter
   });
@@ -485,12 +423,10 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
     const active = [];
     const ready = [];
     const completed = [];
-    
     filteredOrders.forEach(o => {
       const items = o.items || [];
       const allCompleted = items.length > 0 && items.every(i => i.status === 'Afgerond');
       const allReady = items.length > 0 && items.every(i => i.status === 'Gereed');
-      
       if (allCompleted) completed.push(o);
       else if (allReady) ready.push(o);
       else active.push(o);
@@ -500,16 +436,35 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    editingId ? onUpdate('orders', editingId, formData) : onAdd('orders', { ...formData, isDasLoods: isDasLoodsFilter });
+    const dataToSave = { ...formData };
+    if (isDasLoodsFilter) {
+      dataToSave.customer = formData.customer || 'Das Loods';
+      dataToSave.orderTime = '';
+      dataToSave.messengerLink = '';
+    }
+    editingId ? onUpdate('orders', editingId, dataToSave) : onAdd('orders', dataToSave);
     setShowModal(false);
     setEditingId(null);
   };
 
-  const handleQuickStatusUpdate = (orderId, itemIndex, newStatus) => {
+  const handlePartialReadyUpdate = (orderId, itemIndex, increment) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+    const newItems = [...order.items];
+    const item = newItems[itemIndex];
+    const newCount = Math.min(Number(item.quantity), Math.max(0, (Number(item.readyQuantity) || 0) + increment));
+    item.readyQuantity = newCount;
+    if (newCount === Number(item.quantity)) item.status = 'Gereed';
+    else if (newCount > 0) item.status = 'Printen';
+    onUpdate('orders', orderId, { items: newItems });
+  };
+
+  const handleStatusUpdate = (orderId, itemIndex, newStatus) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
     const newItems = [...order.items];
     newItems[itemIndex].status = newStatus;
+    if (newStatus === 'Gereed') newItems[itemIndex].readyQuantity = newItems[itemIndex].quantity;
     onUpdate('orders', orderId, { items: newItems });
   };
 
@@ -526,7 +481,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
         <table className="w-full text-left text-xs font-bold text-slate-700">
           <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
-            <tr><th className="px-8 py-4">Klant</th><th className="px-8 py-4">Items & Status</th><th className="px-8 py-4 text-center">Bedrag</th><th className="px-8 py-4 text-right">Beheer</th></tr>
+            <tr><th className="px-8 py-4">Klant / Datum</th><th className="px-8 py-4">Items & Voortgang</th><th className="px-8 py-4 text-center">Bedrag</th><th className="px-8 py-4 text-right">Beheer</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-50 font-bold">
             {list.sort((a,b) => new Date(b.orderDate) - new Date(a.orderDate)).map(o => (
@@ -534,24 +489,35 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                 <td className="px-8 py-5">
                   <div className="flex items-center gap-2">
                     <p className="text-slate-900 font-bold text-sm">{o.customer}</p>
-                    {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-500 hover:text-purple-700 transition-colors"><MessageCircle size={14}/></a>}
+                    {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-500 hover:text-purple-700"><MessageCircle size={14}/></a>}
                   </div>
-                  <p className="text-[9px] text-slate-400 uppercase font-black">{o.orderDate}</p>
+                  <p className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">{o.orderDate} {o.orderTime}</p>
                 </td>
                 <td className="px-8 py-5">
-                   <div className="space-y-2">
-                    {(o.items || []).map((item, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-600' : item.status === 'Gereed' ? 'bg-emerald-50 text-emerald-600' : 'bg-purple-50 text-purple-700'}`}>
-                          {item.quantity}x {products.find(p => p.id === item.productId)?.name || '?'}
-                        </span>
-                        {!isCompletedSection && (
-                          <select className="bg-transparent border-none text-[9px] font-black uppercase text-slate-600 outline-none appearance-none cursor-pointer hover:text-purple-600 transition-colors" value={item.status} onChange={(e) => handleQuickStatusUpdate(o.id, idx, e.target.value)}>
-                            {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
-                        )}
-                      </div>
-                    ))}
+                   <div className="space-y-3">
+                    {(o.items || []).map((item, idx) => {
+                      const isFullyReady = (item.readyQuantity || 0) === Number(item.quantity) || item.status === 'Gereed';
+                      return (
+                        <div key={idx} className="flex items-center gap-3">
+                          <div className="flex flex-col gap-1 min-w-40">
+                             <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase w-fit ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-500' : isFullyReady ? 'bg-emerald-50 text-emerald-600' : 'bg-purple-50 text-purple-700'}`}>
+                               {item.quantity}x {products.find(p => p.id === item.productId)?.name || '?'}
+                             </span>
+                             {Number(item.quantity) > 1 && !isCompletedSection && (
+                               <div className="flex items-center gap-2 px-1">
+                                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Gereed: {item.readyQuantity || 0}/{item.quantity}</p>
+                                  <button onClick={() => handlePartialReadyUpdate(o.id, idx, 1)} className="p-1 bg-emerald-50 text-emerald-600 rounded-md border-none appearance-none cursor-pointer"><Plus size={10} strokeWidth={4}/></button>
+                               </div>
+                             )}
+                          </div>
+                          {!isCompletedSection && (
+                            <select className="bg-transparent border-none text-[9px] font-black uppercase text-slate-600 outline-none appearance-none cursor-pointer hover:text-purple-600 transition-colors" value={item.status} onChange={(e) => handleStatusUpdate(o.id, idx, e.target.value)}>
+                              {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          )}
+                        </div>
+                      );
+                    })}
                    </div>
                 </td>
                 <td className="px-8 py-5 text-slate-900 font-black italic text-center">
@@ -572,7 +538,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
   return (
     <div className="space-y-10 animate-in fade-in duration-500">
       <button 
-        onClick={() => { setEditingId(null); setFormData({ customer: '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], orderTime: new Date().toTimeString().slice(0,5), items: [{ productId: '', quantity: 1, price: '', status: 'In de wacht' }], comments: '', isDasLoods: isDasLoodsFilter }); setShowModal(true); }} 
+        onClick={() => { setEditingId(null); setFormData({ customer: isDasLoodsFilter ? 'Das Loods' : '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], orderTime: new Date().toTimeString().slice(0,5), items: [{ productId: '', quantity: 1, readyQuantity: 0, price: '', status: 'In de wacht' }], comments: '', isDasLoods: isDasLoodsFilter }); setShowModal(true); }} 
         style={{ backgroundColor: '#9333ea' }}
         className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-xl border-none appearance-none cursor-pointer transition-all hover:bg-purple-700"
       >
@@ -581,26 +547,25 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
 
       <OrderTable list={grouped.active} title="Lopende Bestellingen" />
       {grouped.ready.length > 0 && <OrderTable list={grouped.ready} title="Gereed voor Afhalen" isReadySection={true} />}
-
       {grouped.completed.length > 0 && (
         <div className="space-y-4">
           <button onClick={() => setShowCompleted(!showCompleted)} className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600 border-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors appearance-none font-black tracking-widest">
-            {showCompleted ? <ChevronDown size={14}/> : <ChevronRight size={14}/>} ARCHIEF TONEN
+            {showCompleted ? <ChevronDown size={14}/> : <ChevronRight size={14}/>} ARCHIEF
           </button>
           {showCompleted && <OrderTable list={grouped.completed} title="Afgeronde Bestellingen" isCompletedSection={true} />}
         </div>
       )}
 
-      {showModal && <Modal title={editingId ? "Bestelling Aanpassen" : "Nieuwe Bestelling"} onClose={() => setShowModal(false)}>
+      {showModal && <Modal title={editingId ? "Aanpassen" : "Nieuw"} onClose={() => setShowModal(false)}>
         <form onSubmit={handleSubmit} className="space-y-6">
-          <Input label="Klant Naam" value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} required />
+          {!isDasLoodsFilter && <Input label="Klant Naam" value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} required />}
           <div className="grid grid-cols-2 gap-4">
             <Input label="Bestel Datum" type="date" value={formData.orderDate} onChange={e => setFormData({...formData, orderDate: e.target.value})} required />
-            <Input label="Bestel Tijd" type="time" value={formData.orderTime} onChange={e => setFormData({...formData, orderTime: e.target.value})} required />
+            {!isDasLoodsFilter && <Input label="Bestel Tijd" type="time" value={formData.orderTime} onChange={e => setFormData({...formData, orderTime: e.target.value})} />}
           </div>
-          <Input label="Chat Link" value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />
+          {!isDasLoodsFilter && <Input label="Chat Link" value={formData.messengerLink} onChange={e => setFormData({...formData, messengerLink: e.target.value})} />}
           <div className="space-y-3">
-             <div className="flex justify-between items-center"><label className="text-[9px] font-black uppercase text-slate-600 tracking-widest">Producten</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase bg-transparent border-none appearance-none cursor-pointer">+ Item</button></div>
+             <div className="flex justify-between items-center"><label className="text-[9px] font-black uppercase text-slate-600 tracking-widest">Producten</label><button type="button" onClick={() => setFormData({...formData, items: [...formData.items, {productId: '', quantity: 1, readyQuantity: 0, price: '', status: 'In de wacht'}]})} className="text-purple-600 text-[9px] font-black uppercase bg-transparent border-none appearance-none cursor-pointer">+ Item</button></div>
              <div className="space-y-3 bg-slate-50 p-4 rounded-2xl max-h-60 overflow-y-auto shadow-inner">
                {formData.items.map((it, idx) => (
                  <div key={idx} className="bg-white p-3 rounded-xl border-none relative shadow-sm">
@@ -613,7 +578,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                      setFormData({...formData, items: ni});
                    }}>
                      <option value="">Selecteer Product...</option>
-                     {products.filter(p => !!p.isDasLoods === !!isDasLoodsFilter && p.status !== 'gearchiveerd').map(p => <option key={p.id} value={p.id} className="text-slate-900">{p.name}</option>)}
+                     {products.filter(p => !!p.isDasLoods === !!isDasLoodsFilter && p.status !== 'gearchiveerd').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                    </select>
                    <div className="grid grid-cols-2 gap-2 mt-2">
                      <input type="number" className="p-2 bg-slate-50 rounded-lg text-xs font-black border-none outline-none text-slate-900" value={it.quantity} onChange={e => {const ni = [...formData.items]; ni[idx].quantity = e.target.value; setFormData({...formData, items: ni});}} placeholder="Aantal" />
@@ -623,7 +588,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                ))}
              </div>
           </div>
-          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Bestelling Opslaan</button>
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -635,9 +600,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
   const [editingId, setEditingId] = useState(null);
   const [expanded, setExpanded] = useState({});
   const [formData, setFormData] = useState({ name: '', filaments: [], suggestedPrice: '', timeH: 0, timeM: 0, isDasLoods: isDasLoodsFilter });
-
   const filteredProducts = useMemo(() => products.filter(p => !!p.isDasLoods === !!isDasLoodsFilter), [products, isDasLoodsFilter]);
-
   const uniqueFilamentTypes = useMemo(() => {
     const types = {};
     filaments.forEach(f => {
@@ -688,7 +651,6 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                     <td colSpan="3" className="px-10 py-6">
                        <div className="flex gap-10">
                           <div><p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-widest">Gewicht</p><p className="text-sm font-bold text-slate-700">{p.weight}g</p></div>
-                          <div><p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-widest">Printtijd</p><p className="text-sm font-bold text-slate-700">{Math.floor(p.printTime / 60)}u {p.printTime % 60}m</p></div>
                           <div><p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-widest">Kostprijs</p><p className="text-sm font-black text-slate-900 italic">€{((p.filaments || []).reduce((s, f) => s + (f.weight * getFilamentGramPrice(filaments, f.key)), 0) + (p.printTime / 60) * (settings.printerWattage / 1000) * settings.kwhPrice).toFixed(2)}</p></div>
                           <div className="flex-1 text-right flex items-center justify-end gap-2">
                              <button onClick={() => { setEditingId(p.id); setFormData({ ...p, timeH: Math.floor(p.printTime / 60), timeM: p.printTime % 60 }); setShowModal(true); }} className="p-2 bg-white rounded-xl shadow-sm text-purple-600 border-none appearance-none cursor-pointer hover:bg-purple-50 transition-all"><Edit3 size={16}/></button>
@@ -704,7 +666,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
         </table>
       </div>
 
-      {showModal && <Modal title={editingId ? "Product Bewerken" : "Nieuw Product"} onClose={() => setShowModal(false)}>
+      {showModal && <Modal title={editingId ? "Bewerken" : "Nieuw"} onClose={() => setShowModal(false)}>
         <form onSubmit={(e) => {
           e.preventDefault();
           const final = { name: formData.name, filaments: formData.filaments, printTime: (Number(formData.timeH) * 60) + Number(formData.timeM), suggestedPrice: Number(formData.suggestedPrice), weight: formData.filaments.reduce((s,f) => s + Number(f.weight), 0), isDasLoods: isDasLoodsFilter };
@@ -729,16 +691,16 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                       style={{ backgroundColor: assign ? '#9333ea' : '#fff' }}
                       className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none appearance-none cursor-pointer transition-all ${assign ? 'text-white shadow-md shadow-purple-100' : 'text-slate-600 font-bold shadow-sm'}`}
                     >
-                      <div className="w-2.5 h-2.5 rounded-full border-none shadow-sm" style={{backgroundColor: type.color}}></div> {type.brand} {type.materialType} {type.colorName}
+                      <div className="w-2.5 h-2.5 rounded-full border-none shadow-sm" style={{backgroundColor: type.color}}></div> {type.brand} {type.colorName}
                     </button>
-                    {assign && <input type="number" className="w-16 p-2 bg-white rounded-lg text-[10px] font-black border-none outline-none shadow-sm text-slate-900" placeholder="G" value={assign.weight} onChange={e => setFormData({...formData, filaments: formData.filaments.map(f => f.key === type.key ? {...f, weight: Number(e.target.value)} : f)})} />}
+                    {assign && <input type="number" className="w-16 p-2 bg-white rounded-lg text-[10px] font-black border-none outline-none shadow-sm text-slate-900" value={assign.weight} onChange={e => setFormData({...formData, filaments: formData.filaments.map(f => f.key === type.key ? {...f, weight: Number(e.target.value)} : f)})} />}
                   </div>
                 );
               })}
             </div>
           </div>
           <Input label="Verkoopprijs (€)" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} required />
-          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Product Opslaan</button>
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -751,7 +713,6 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
   const [expanded, setExpanded] = useState({});
   const [archived, setArchived] = useState(false);
   const [formData, setFormData] = useState({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 });
-
   const grouped = useMemo(() => {
     const res = {};
     filaments.filter(f => archived ? f.status === 'leeg' : f.status !== 'leeg').forEach(f => {
@@ -794,10 +755,6 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                       <td colSpan="2" className="px-10 py-4 text-[10px] font-black uppercase text-slate-600 tracking-widest"><p className="uppercase text-slate-600 font-black tracking-widest">Rol #{r.id.slice(-4)}</p></td>
                       <td className="px-8 py-4 font-black italic text-slate-800">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
                       <td className="px-8 py-4 text-right flex justify-end gap-2">
-                        <div className="flex bg-white rounded-lg border-none p-1 px-3 items-center shadow-sm">
-                          <Hash size={12} className="text-purple-500 mr-2" />
-                          <input type="number" placeholder="+/- G" className="w-12 text-[10px] font-black outline-none border-none p-0 bg-transparent appearance-none text-slate-900" onKeyDown={e => e.key === 'Enter' && (onUpdate('filaments', r.id, {usedWeight: Math.max(0, (r.usedWeight || 0) + Number(e.target.value))}), e.target.value = '')} />
-                        </div>
                         <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-rose-500 appearance-none border-none cursor-pointer transition-colors"><Archive size={16}/></button>
                       </td>
                     </tr>
@@ -808,20 +765,6 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
           </tbody>
         </table>
       </div>
-      {showModal && <Modal title={editingId ? "Rol Aanpassen" : "Filament Toevoegen"} onClose={() => setShowModal(false)}>
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          const { quantity, ...data } = formData;
-          for(let i=0; i<quantity; i++) onAdd('filaments', {...data, usedWeight: 0, status: 'voorraad', price: Number(data.price), totalWeight: Number(data.totalWeight)});
-          setShowModal(false);
-        }} className="space-y-6">
-          <div className="grid grid-cols-2 gap-4"><Input label="Merk" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} required /><Input label="Type" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required /></div>
-          <div className="grid grid-cols-2 gap-4"><Input label="Kleur" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required /><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-600 ml-2 tracking-widest font-black">Visueel</label><input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-2xl border-none cursor-pointer shadow-inner appearance-none outline-none" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} /></div></div>
-          <div className="grid grid-cols-2 gap-4"><Input label="Prijs" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required /><Input label="Totaal (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required /></div>
-          {!editingId && <Input label="Aantal rollen" type="number" min="1" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} required />}
-          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">In Voorraad Plaatsen</button>
-        </form>
-      </Modal>}
     </div>
   );
 }
@@ -830,10 +773,10 @@ function SettingsPanel({ settings, onSave }) {
   const [temp, setTemp] = useState(settings);
   return (
     <div className="max-w-md bg-white p-12 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8 animate-in slide-in-from-right-4 duration-500">
-      <h2 className="text-2xl font-black italic uppercase text-purple-600 tracking-tighter">Configuratie</h2>
+      <h2 className="text-2xl font-black italic uppercase text-purple-600 tracking-tighter">Instellingen</h2>
       <Input label="Prijs p/kWh (€)" type="number" step="0.01" value={temp.kwhPrice} onChange={e => setTemp({...temp, kwhPrice: Number(e.target.value)})} />
       <Input label="Printer Verbruik (W)" type="number" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
-      <button onClick={() => onSave(temp)} style={{ backgroundColor: '#9333ea' }} className="w-full py-5 text-white rounded-2xl font-black uppercase shadow-xl border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Instellingen Opslaan</button>
+      <button onClick={() => onSave(temp)} style={{ backgroundColor: '#9333ea' }} className="w-full py-5 text-white rounded-2xl font-black uppercase shadow-xl border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Opslaan</button>
     </div>
   );
 }
@@ -853,9 +796,6 @@ function Modal({ title, children, onClose }) {
       <div className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh] border-none relative slide-in-from-bottom-4 animate-in duration-500">
         <div className="flex justify-between items-center mb-10"><h2 className="text-3xl font-black italic uppercase text-slate-900 tracking-tighter">{title}</h2><button onClick={onClose} className="text-slate-400 hover:text-rose-500 border-none bg-transparent appearance-none cursor-pointer transition-all"><Plus size={32} className="rotate-45" /></button></div>
         {children}
-        <div className="mt-8 flex justify-center">
-          <button onClick={onClose} className="text-slate-600 font-black uppercase tracking-widest text-[10px] hover:text-purple-600 transition-colors border-none bg-transparent cursor-pointer">Venster Sluiten</button>
-        </div>
       </div>
     </div>
   );
