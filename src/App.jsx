@@ -691,7 +691,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                       style={{ backgroundColor: assign ? '#9333ea' : '#fff' }}
                       className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none appearance-none cursor-pointer transition-all ${assign ? 'text-white shadow-md shadow-purple-100' : 'text-slate-600 font-bold shadow-sm'}`}
                     >
-                      <div className="w-2.5 h-2.5 rounded-full border-none shadow-sm" style={{backgroundColor: type.color}}></div> {type.brand} {type.colorName}
+                      <div className="w-2.5 h-2.5 rounded-full border-none shadow-sm" style={{backgroundColor: type.color}}></div> {type.brand} {type.materialType} {type.colorName}
                     </button>
                     {assign && <input type="number" className="w-16 p-2 bg-white rounded-lg text-[10px] font-black border-none outline-none shadow-sm text-slate-900" value={assign.weight} onChange={e => setFormData({...formData, filaments: formData.filaments.map(f => f.key === type.key ? {...f, weight: Number(e.target.value)} : f)})} />}
                   </div>
