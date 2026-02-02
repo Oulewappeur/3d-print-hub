@@ -501,79 +501,96 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
     onUpdate('orders', orderId, { items: newItems });
   };
 
-  const OrderTable = ({ list, title, isCompletedSection = false, isReadySection = false }) => (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3 px-4">
-        <div className={`p-1.5 rounded-lg ${isReadySection ? 'bg-emerald-100 text-emerald-600' : isCompletedSection ? 'bg-slate-100 text-slate-400' : 'bg-purple-100 text-purple-600'}`}>
-          {isReadySection ? <Check size={14} strokeWidth={3} /> : isCompletedSection ? <Archive size={14} /> : <ListChecks size={14} />}
+  const OrderTable = ({ list, title, isCompletedSection = false, isReadySection = false }) => {
+    const sortedList = useMemo(() => {
+      return [...list].sort((a, b) => {
+        // Priority 1: Check if any item in the order has status "Printen"
+        const isPrintingA = (a.items || []).some(i => i.status === 'Printen') ? 0 : 1;
+        const isPrintingB = (b.items || []).some(i => i.status === 'Printen') ? 0 : 1;
+        
+        if (isPrintingA !== isPrintingB) return isPrintingA - isPrintingB;
+
+        // Priority 2: Combination of Date and Time (chronological)
+        const dateA = new Date(`${a.orderDate}T${a.orderTime || '00:00'}`);
+        const dateB = new Date(`${b.orderDate}T${b.orderTime || '00:00'}`);
+        return dateA - dateB;
+      });
+    }, [list]);
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 px-4">
+          <div className={`p-1.5 rounded-lg ${isReadySection ? 'bg-emerald-100 text-emerald-600' : isCompletedSection ? 'bg-slate-100 text-slate-400' : 'bg-purple-100 text-purple-600'}`}>
+            {isReadySection ? <Check size={14} strokeWidth={3} /> : isCompletedSection ? <Archive size={14} /> : <ListChecks size={14} />}
+          </div>
+          <h2 className={`text-sm font-black uppercase tracking-widest ${isReadySection ? 'text-emerald-500' : 'text-slate-600'}`}>
+            {title} ({list.length})
+          </h2>
         </div>
-        <h2 className={`text-sm font-black uppercase tracking-widest ${isReadySection ? 'text-emerald-500' : 'text-slate-600'}`}>
-          {title} ({list.length})
-        </h2>
-      </div>
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
-        <table className="w-full text-left text-xs font-bold text-slate-700">
-          <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
-            <tr><th className="px-8 py-4">Klant / Datum</th><th className="px-8 py-4">Items & Voortgang</th><th className="px-8 py-4 text-center">Bedrag</th><th className="px-8 py-4 text-right">Beheer</th></tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50 font-bold">
-            {list.sort((a,b) => new Date(a.orderDate) - new Date(b.orderDate)).map(o => (
-              <tr key={o.id} className="hover:bg-slate-50/30 transition-colors group">
-                <td className="px-8 py-5">
-                  <div className="flex items-center gap-2">
-                    <p className="text-slate-900 font-bold text-sm">{o.customer}</p>
-                    {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-500 hover:text-purple-700"><MessageCircle size={14}/></a>}
-                  </div>
-                  <p className="text-[9px] text-slate-400 uppercase font-black tracking-tighter mb-1">{o.orderDate} {o.orderTime}</p>
-                  {o.comments && <p className="text-[10px] text-slate-500 font-medium italic mt-1 line-clamp-1 group-hover:line-clamp-none">{o.comments}</p>}
-                </td>
-                <td className="px-8 py-5">
-                   <div className="space-y-3">
-                    {(o.items || []).map((item, idx) => {
-                      const isFullyReady = (item.readyQuantity || 0) === Number(item.quantity) || item.status === 'Gereed';
-                      return (
-                        <div key={idx} className="flex items-center gap-3">
-                          <div className="flex flex-col gap-1 min-w-40">
-                             <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase w-fit ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-500' : isFullyReady ? 'bg-emerald-50 text-emerald-600' : 'bg-purple-50 text-purple-700'}`}>
-                               {item.quantity}x {products.find(p => p.id === item.productId)?.name || '?'}
-                             </span>
-                             {Number(item.quantity) > 1 && !isCompletedSection && (
-                               <div className="flex items-center gap-2 px-1">
-                                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Gereed: {item.readyQuantity || 0}/{item.quantity}</p>
-                                  <button onClick={() => handlePartialReadyUpdate(o.id, idx, 1)} className="p-1 bg-emerald-50 text-emerald-600 rounded-md border-none appearance-none cursor-pointer"><Plus size={10} strokeWidth={4}/></button>
-                               </div>
-                             )}
+        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
+          <table className="w-full text-left text-xs font-bold text-slate-700">
+            <thead className="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
+              <tr><th className="px-8 py-4">Klant / Datum</th><th className="px-8 py-4">Items & Voortgang</th><th className="px-8 py-4 text-center">Bedrag</th><th className="px-8 py-4 text-right">Beheer</th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 font-bold">
+              {sortedList.map(o => (
+                <tr key={o.id} className="hover:bg-slate-50/30 transition-colors group">
+                  <td className="px-8 py-5">
+                    <div className="flex items-center gap-2">
+                      <p className="text-slate-900 font-bold text-sm">{o.customer}</p>
+                      {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-500 hover:text-purple-700"><MessageCircle size={14}/></a>}
+                    </div>
+                    <p className="text-[9px] text-slate-400 uppercase font-black tracking-tighter mb-1">{o.orderDate} {o.orderTime}</p>
+                    {o.comments && <p className="text-[10px] text-slate-500 font-medium italic mt-1 line-clamp-1 group-hover:line-clamp-none">{o.comments}</p>}
+                  </td>
+                  <td className="px-8 py-5">
+                     <div className="space-y-3">
+                      {(o.items || []).map((item, idx) => {
+                        const isFullyReady = (item.readyQuantity || 0) === Number(item.quantity) || item.status === 'Gereed';
+                        return (
+                          <div key={idx} className="flex items-center gap-3">
+                            <div className="flex flex-col gap-1 min-w-40">
+                               <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase w-fit ${item.status === 'Afgerond' ? 'bg-slate-100 text-slate-500' : isFullyReady ? 'bg-emerald-50 text-emerald-600' : 'bg-purple-50 text-purple-700'}`}>
+                                 {item.quantity}x {products.find(p => p.id === item.productId)?.name || '?'}
+                               </span>
+                               {Number(item.quantity) > 1 && !isCompletedSection && (
+                                 <div className="flex items-center gap-2 px-1">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Gereed: {item.readyQuantity || 0}/{item.quantity}</p>
+                                    <button onClick={() => handlePartialReadyUpdate(o.id, idx, 1)} className="p-1 bg-emerald-50 text-emerald-600 rounded-md border-none appearance-none cursor-pointer"><Plus size={10} strokeWidth={4}/></button>
+                                 </div>
+                               )}
+                            </div>
+                            {!isCompletedSection && (
+                              <select className="bg-transparent border-none text-[9px] font-black uppercase text-slate-600 outline-none appearance-none cursor-pointer hover:text-purple-600 transition-colors" value={item.status} onChange={(e) => handleStatusUpdate(o.id, idx, e.target.value)}>
+                                {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            )}
                           </div>
-                          {!isCompletedSection && (
-                            <select className="bg-transparent border-none text-[9px] font-black uppercase text-slate-600 outline-none appearance-none cursor-pointer hover:text-purple-600 transition-colors" value={item.status} onChange={(e) => handleStatusUpdate(o.id, idx, e.target.value)}>
-                              {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          )}
-                        </div>
-                      );
-                    })}
-                   </div>
-                </td>
-                <td className="px-8 py-5 text-slate-900 font-black italic text-center">
-                   €{(o.items || []).reduce((s, i) => s + (Number(i.price) * Number(i.quantity)), 0).toFixed(2)}
-                </td>
-                <td className="px-8 py-5 text-right flex justify-end items-center gap-2">
-                  {!isCompletedSection && !isReadySection && (
-                    <button onClick={() => handleMarkAllReady(o.id)} className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl text-[9px] font-black uppercase hover:bg-emerald-100 transition-colors border-none appearance-none cursor-pointer">Alles Gereed</button>
-                  )}
-                  {isReadySection && (
-                    <button onClick={() => handleMarkAllCompleted(o.id)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-slate-200 transition-colors border-none appearance-none cursor-pointer">Alles Afronden</button>
-                  )}
-                  <button onClick={() => { setEditingId(o.id); setFormData(o); setShowModal(true); }} className="p-2 text-slate-400 hover:text-purple-600 bg-transparent border-none appearance-none cursor-pointer transition-colors"><Edit3 size={16}/></button>
-                  <button onClick={() => onDelete('orders', o.id)} className="p-2 text-slate-400 hover:text-rose-500 bg-transparent border-none appearance-none cursor-pointer transition-colors"><Trash2 size={16}/></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                        );
+                      })}
+                     </div>
+                  </td>
+                  <td className="px-8 py-5 text-slate-900 font-black italic text-center">
+                     €{(o.items || []).reduce((s, i) => s + (Number(i.price) * Number(i.quantity)), 0).toFixed(2)}
+                  </td>
+                  <td className="px-8 py-5 text-right flex justify-end items-center gap-2">
+                    {!isCompletedSection && !isReadySection && (
+                      <button onClick={() => handleMarkAllReady(o.id)} className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl text-[9px] font-black uppercase hover:bg-emerald-100 transition-colors border-none appearance-none cursor-pointer">Alles Gereed</button>
+                    )}
+                    {isReadySection && (
+                      <button onClick={() => handleMarkAllCompleted(o.id)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-slate-200 transition-colors border-none appearance-none cursor-pointer">Alles Afronden</button>
+                    )}
+                    <button onClick={() => { setEditingId(o.id); setFormData(o); setShowModal(true); }} className="p-2 text-slate-400 hover:text-purple-600 bg-transparent border-none appearance-none cursor-pointer transition-colors"><Edit3 size={16}/></button>
+                    <button onClick={() => onDelete('orders', o.id)} className="p-2 text-slate-400 hover:text-rose-500 bg-transparent border-none appearance-none cursor-pointer transition-colors"><Trash2 size={16}/></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-10 animate-in fade-in duration-500">
@@ -713,7 +730,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
       {showModal && <Modal title={editingId ? "Bewerken" : "Nieuw"} onClose={() => setShowModal(false)}>
         <form onSubmit={(e) => {
           e.preventDefault();
-          const final = { name: formData.name, filaments: formData.filaments, printTime: (Number(formData.timeH) * 60) + Number(formData.timeM), suggestedPrice: Number(formData.suggestedPrice), weight: formData.filaments.reduce((s,f) => s + Number(f.weight), 0), isDasLoods: isDasLoodsFilter };
+          const final = { name: formData.name, filaments: formData.filaments, printTime: (Number(formData.timeH) * 60) + Number(formData.timeM), suggestedPrice: Number(formData.suggestedPrice), weight: formData.filaments.reduce((s,f) => s + Number(f.weight), 0), isDasLoodsFilter };
           editingId ? onUpdate('products', editingId, final) : onAdd('products', {...final, stockQuantity: 0, status: 'actief'});
           setShowModal(false);
         }} className="space-y-6">
