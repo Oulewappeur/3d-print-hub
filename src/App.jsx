@@ -37,7 +37,9 @@ import {
   LayoutDashboard,
   Settings,
   Check,
-  Hash
+  Hash,
+  Store,
+  Euro
 } from 'lucide-react';
 
 // Firebase Configuratie
@@ -753,7 +755,17 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
   const [expanded, setExpanded] = useState({});
   const [archived, setArchived] = useState(false);
-  const [formData, setFormData] = useState({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 });
+  const [formData, setFormData] = useState({ 
+    brand: '', 
+    materialType: 'PLA', 
+    colorName: '', 
+    colorCode: '#9333ea', 
+    totalWeight: 1000, 
+    price: '', 
+    purchaseDate: new Date().toISOString().split('T')[0], 
+    shop: '', 
+    quantity: 1 
+  });
 
   const grouped = useMemo(() => {
     const res = {};
@@ -769,7 +781,18 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
     e.preventDefault();
     const qty = Math.max(1, Number(formData.quantity) || 1);
     for (let i = 0; i < qty; i++) {
-      await onAdd('filaments', { ...formData, usedWeight: 0, status: 'actief', price: Number(formData.price), totalWeight: Number(formData.totalWeight) });
+      await onAdd('filaments', { 
+        brand: formData.brand,
+        materialType: formData.materialType,
+        colorName: formData.colorName,
+        colorCode: formData.colorCode,
+        totalWeight: Number(formData.totalWeight),
+        price: Number(formData.price),
+        purchaseDate: formData.purchaseDate,
+        shop: formData.shop,
+        usedWeight: 0, 
+        status: 'actief' 
+      });
     }
     setShowModal(false);
   };
@@ -810,7 +833,17 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                   </tr>
                   {expanded[k] && g.rolls.map(r => (
                     <tr key={r.id} className="bg-slate-50/30 border-l-4 border-purple-500 animate-in slide-in-from-left-2">
-                      <td colSpan="1" className="px-10 py-4"><p className="uppercase text-slate-400 font-black tracking-widest text-[9px]">Rol #{r.id.slice(-4)}</p></td>
+                      <td colSpan="1" className="px-10 py-4">
+                        <p className="uppercase text-slate-400 font-black tracking-widest text-[9px] mb-1">Rol #{r.id.slice(-4)}</p>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-600 font-bold">
+                            <Store size={12} className="text-slate-400" /> {r.shop || 'Geen winkel'}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-600 font-bold">
+                            <Euro size={12} className="text-slate-400" /> €{r.price?.toFixed(2) || '0.00'}
+                          </div>
+                        </div>
+                      </td>
                       <td className="px-8 py-4">
                         <div className="flex items-center gap-3 bg-white p-2 rounded-xl shadow-sm w-fit">
                           <Hash size={14} className="text-purple-500"/>
@@ -829,7 +862,7 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                       </td>
                       <td className="px-8 py-4 font-black italic text-slate-800">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
                       <td className="px-8 py-4 text-right flex justify-end gap-2">
-                        {r.status === 'actief' && <button onClick={() => updateItem('filaments', r.id, {status: 'leeg'})} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-rose-500 appearance-none border-none cursor-pointer transition-colors"><Archive size={16}/></button>}
+                        {r.status === 'actief' && <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-rose-500 appearance-none border-none cursor-pointer transition-colors"><Archive size={16}/></button>}
                         <button onClick={() => deleteItem('filaments', r.id)} className="p-2 bg-white rounded-xl shadow-sm text-slate-200 hover:text-rose-500 appearance-none border-none cursor-pointer transition-colors"><Trash2 size={16}/></button>
                       </td>
                     </tr>
@@ -852,6 +885,7 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
             <Input label="Totaal Gewicht (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required />
             <Input label="Prijs Rol (€)" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required />
           </div>
+          <Input label="Winkel / Shop" value={formData.shop} onChange={e => setFormData({...formData, shop: e.target.value})} />
           <div className="grid grid-cols-2 gap-4">
             <Input label="Aantal Rollen" type="number" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} />
             <div className="space-y-1">

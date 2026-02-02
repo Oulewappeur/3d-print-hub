@@ -18,41 +18,26 @@ import {
   onAuthStateChanged
 } from 'firebase/auth';
 import { 
-  Package, 
-  Database, 
-  ShoppingCart, 
   Plus, 
   Minus,
   Trash2, 
-  Settings, 
   Printer, 
   Zap, 
-  AlertTriangle, 
-  LayoutDashboard, 
-  TrendingUp, 
-  Clock, 
-  Euro, 
-  Hash, 
   Archive, 
-  RefreshCw, 
   CheckCircle2, 
   Edit3, 
   ChevronRight, 
   ChevronDown, 
   MessageCircle, 
-  Upload, 
-  Activity, 
-  Scale,
   ListChecks,
-  PlayCircle,
-  Box,
-  MessageSquare,
-  Check,
   BarChart3,
   History,
-  AlertCircle,
-  Store,
-  Truck
+  ShoppingCart,
+  Database,
+  LayoutDashboard,
+  Settings,
+  Check,
+  Hash
 } from 'lucide-react';
 
 // Firebase Configuratie
@@ -150,9 +135,9 @@ export default function App() {
           Rosevalley 3D Hub
         </div>
         <div className="flex flex-col gap-2 flex-1">
-          {Object.values(TABS).map(tab => (
+          {Object.entries(TABS).map(([key, tab]) => (
             <button 
-              key={tab} 
+              key={key} 
               onClick={() => setActiveTab(tab)} 
               style={{ backgroundColor: activeTab === tab ? '#9333ea' : 'transparent' }}
               className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none focus:outline-none focus:ring-0 appearance-none select-none ${activeTab === tab ? 'text-white shadow-lg shadow-purple-200' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600 font-bold'}`}
@@ -504,13 +489,9 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
   const OrderTable = ({ list, title, isCompletedSection = false, isReadySection = false }) => {
     const sortedList = useMemo(() => {
       return [...list].sort((a, b) => {
-        // Priority 1: Check if any item in the order has status "Printen"
         const isPrintingA = (a.items || []).some(i => i.status === 'Printen') ? 0 : 1;
         const isPrintingB = (b.items || []).some(i => i.status === 'Printen') ? 0 : 1;
-        
         if (isPrintingA !== isPrintingB) return isPrintingA - isPrintingB;
-
-        // Priority 2: Combination of Date and Time (chronological)
         const dateA = new Date(`${a.orderDate}T${a.orderTime || '00:00'}`);
         const dateB = new Date(`${b.orderDate}T${b.orderTime || '00:00'}`);
         return dateA - dateB;
@@ -730,7 +711,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
       {showModal && <Modal title={editingId ? "Bewerken" : "Nieuw"} onClose={() => setShowModal(false)}>
         <form onSubmit={(e) => {
           e.preventDefault();
-          const final = { name: formData.name, filaments: formData.filaments, printTime: (Number(formData.timeH) * 60) + Number(formData.timeM), suggestedPrice: Number(formData.suggestedPrice), weight: formData.filaments.reduce((s,f) => s + Number(f.weight), 0), isDasLoodsFilter };
+          const final = { name: formData.name, filaments: formData.filaments, printTime: (Number(formData.timeH) * 60) + Number(formData.timeM), suggestedPrice: Number(formData.suggestedPrice), weight: formData.filaments.reduce((s,f) => s + Number(f.weight), 0), isDasLoods: isDasLoodsFilter };
           editingId ? onUpdate('products', editingId, final) : onAdd('products', {...final, stockQuantity: 0, status: 'actief'});
           setShowModal(false);
         }} className="space-y-6">
@@ -770,10 +751,10 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
 
 function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
   const [showModal, setShowModal] = useState(false);
-  const [editingId, setEditingId] = useState(null);
   const [expanded, setExpanded] = useState({});
   const [archived, setArchived] = useState(false);
   const [formData, setFormData] = useState({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 });
+
   const grouped = useMemo(() => {
     const res = {};
     filaments.filter(f => archived ? f.status === 'leeg' : f.status !== 'leeg').forEach(f => {
@@ -784,11 +765,27 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
     return Object.values(res);
   }, [filaments, archived]);
 
+  const handleAddRolls = async (e) => {
+    e.preventDefault();
+    const qty = Math.max(1, Number(formData.quantity) || 1);
+    for (let i = 0; i < qty; i++) {
+      await onAdd('filaments', { ...formData, usedWeight: 0, status: 'actief', price: Number(formData.price), totalWeight: Number(formData.totalWeight) });
+    }
+    setShowModal(false);
+  };
+
+  const handleManualConsumption = (rolId, currentUsed, val) => {
+    const amount = Number(val);
+    if (!isNaN(amount) && amount > 0) {
+      onUpdate('filaments', rolId, { usedWeight: currentUsed + amount });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <button 
-          onClick={() => { setEditingId(null); setFormData({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 }); setShowModal(true); }} 
+          onClick={() => { setFormData({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 }); setShowModal(true); }} 
           style={{ backgroundColor: '#9333ea' }}
           className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none appearance-none cursor-pointer hover:bg-purple-700 transition-all"
         >+ Rol Toevoegen</button>
@@ -813,10 +810,27 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                   </tr>
                   {expanded[k] && g.rolls.map(r => (
                     <tr key={r.id} className="bg-slate-50/30 border-l-4 border-purple-500 animate-in slide-in-from-left-2">
-                      <td colSpan="2" className="px-10 py-4 text-[10px] font-black uppercase text-slate-600 tracking-widest"><p className="uppercase text-slate-600 font-black tracking-widest">Rol #{r.id.slice(-4)}</p></td>
+                      <td colSpan="1" className="px-10 py-4"><p className="uppercase text-slate-400 font-black tracking-widest text-[9px]">Rol #{r.id.slice(-4)}</p></td>
+                      <td className="px-8 py-4">
+                        <div className="flex items-center gap-3 bg-white p-2 rounded-xl shadow-sm w-fit">
+                          <Hash size={14} className="text-purple-500"/>
+                          <input 
+                            type="number" 
+                            placeholder="Verbruik (g)..." 
+                            className="bg-transparent border-none outline-none font-bold text-xs w-24"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && e.target.value) {
+                                handleManualConsumption(r.id, r.usedWeight || 0, e.target.value);
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                        </div>
+                      </td>
                       <td className="px-8 py-4 font-black italic text-slate-800">{Math.round(r.totalWeight - (r.usedWeight || 0))}g / {r.totalWeight}g</td>
                       <td className="px-8 py-4 text-right flex justify-end gap-2">
-                        <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-rose-500 appearance-none border-none cursor-pointer transition-colors"><Archive size={16}/></button>
+                        {r.status === 'actief' && <button onClick={() => updateItem('filaments', r.id, {status: 'leeg'})} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-rose-500 appearance-none border-none cursor-pointer transition-colors"><Archive size={16}/></button>}
+                        <button onClick={() => deleteItem('filaments', r.id)} className="p-2 bg-white rounded-xl shadow-sm text-slate-200 hover:text-rose-500 appearance-none border-none cursor-pointer transition-colors"><Trash2 size={16}/></button>
                       </td>
                     </tr>
                   ))}
@@ -826,6 +840,28 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
           </tbody>
         </table>
       </div>
+
+      {showModal && <Modal title="Voorraad Toevoegen" onClose={() => setShowModal(false)}>
+        <form onSubmit={handleAddRolls} className="space-y-6">
+          <Input label="Merk" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} required />
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Materiaal Type" value={formData.materialType} onChange={e => setFormData({...formData, materialType: e.target.value})} required />
+            <Input label="Kleur Naam" value={formData.colorName} onChange={e => setFormData({...formData, colorName: e.target.value})} required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Totaal Gewicht (g)" type="number" value={formData.totalWeight} onChange={e => setFormData({...formData, totalWeight: e.target.value})} required />
+            <Input label="Prijs Rol (€)" type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Aantal Rollen" type="number" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} />
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase text-slate-400 ml-3 block tracking-widest">Kleur Code</label>
+              <input type="color" className="w-full h-[54px] p-2 bg-slate-50 rounded-[1.5rem] border-none shadow-inner cursor-pointer" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} />
+            </div>
+          </div>
+          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Toevoegen</button>
+        </form>
+      </Modal>}
     </div>
   );
 }
