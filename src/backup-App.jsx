@@ -437,7 +437,6 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
     filteredOrders.forEach(o => {
       const items = o.items || [];
       const allCompleted = items.length > 0 && items.every(i => i.status === 'Afgerond');
-      // Een order staat bij "Gereed" als alle items óf gereed óf afgerond zijn (en niet alles al afgerond is)
       const allReadyOrDone = items.length > 0 && items.every(i => i.status === 'Gereed' || i.status === 'Afgerond');
       
       if (allCompleted) completed.push(o);
