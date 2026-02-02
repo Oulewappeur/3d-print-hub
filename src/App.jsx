@@ -204,8 +204,8 @@ function Dashboard({ orders, products, filaments, settings }) {
     const regularOrders = orders.filter(o => !o.isDasLoods);
 
     const completedOrders = regularOrders.filter(o => (o.items || []).every(i => i.status === 'Afgerond'));
-    const readyOrders = regularOrders.filter(o => (o.items || []).length > 0 && (o.items || []).every(i => i.status === 'Gereed'));
-    const waitingOrders = regularOrders.filter(o => (o.items || []).some(i => i.status === 'In de wacht'));
+    const readyOrders = regularOrders.filter(o => (o.items || []).length > 0 && (o.items || []).every(i => i.status === 'Gereed' || i.status === 'Afgerond') && !(o.items || []).every(i => i.status === 'Afgerond'));
+    const waitingOrders = regularOrders.filter(o => (o.items || []).some(i => i.status === 'In de wacht' || i.status === 'Printen'));
 
     completedOrders.forEach(o => {
       (o.items || []).forEach(item => {
@@ -247,7 +247,6 @@ function Dashboard({ orders, products, filaments, settings }) {
           }
         }
 
-        // Enkel wat nog werkelijk geprint moet worden (remaining)
         if (item.status === 'In de wacht' || item.status === 'Printen') {
           if (remaining > 0) {
             if (!pendingProductsBreakdown[p.id]) pendingProductsBreakdown[p.id] = { name: p.name, count: 0 };
@@ -286,12 +285,12 @@ function Dashboard({ orders, products, filaments, settings }) {
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-6">
-        <StatCard title="Reguliere Omzet" value={`€${stats.revenue.toFixed(2)}`} color="text-purple-600" />
-        <StatCard title="Reguliere Winst" value={`€${stats.profit.toFixed(2)}`} color="text-emerald-600" />
-        <StatCard title="Te Realiseren Omzet" value={`€${stats.pendingRevenue.toFixed(2)}`} color="text-blue-500" />
-        <StatCard title="Totaal Verbruikt" value={`${Math.round(stats.totalConsumedWeight)}g`} color="text-slate-500" />
-        <StatCard title="Bestellingen wacht" value={stats.waitingOrderCount} color="text-orange-500" />
-        <StatCard title="Bestellingen Gereed" value={stats.readyOrderCount} color="text-emerald-500" />
+        <StatCard title="Omzet" value={`€${stats.revenue.toFixed(2)}`} color="text-purple-600" />
+        <StatCard title="Winst" value={`€${stats.profit.toFixed(2)}`} color="text-emerald-600" />
+        <StatCard title="Nog te innen" value={`€${stats.pendingRevenue.toFixed(2)}`} color="text-blue-500" />
+        <StatCard title="Verbruikt" value={`${Math.round(stats.totalConsumedWeight)}g`} color="text-slate-500" />
+        <StatCard title="Productie" value={stats.waitingOrderCount} color="text-orange-500" />
+        <StatCard title="Klaar" value={stats.readyOrderCount} color="text-emerald-500" />
         <StatCard title="Afgerond" value={stats.completedOrderCount} color="text-slate-400" />
       </div>
 
@@ -322,7 +321,7 @@ function Dashboard({ orders, products, filaments, settings }) {
         <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col">
           <div className="flex items-center gap-3 mb-8">
              <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Printer size={20}/></div>
-             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">Nog te printen</h2>
+             <h2 className="text-sm font-black uppercase text-slate-400 tracking-widest">In Wacht</h2>
           </div>
           <div className="space-y-4 flex-1">
              {stats.pendingProductsBreakdown.map((item, idx) => (
@@ -438,9 +437,10 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
     filteredOrders.forEach(o => {
       const items = o.items || [];
       const allCompleted = items.length > 0 && items.every(i => i.status === 'Afgerond');
-      const allReady = items.length > 0 && items.every(i => i.status === 'Gereed');
+      const allReadyOrDone = items.length > 0 && items.every(i => i.status === 'Gereed' || i.status === 'Afgerond');
+      
       if (allCompleted) completed.push(o);
-      else if (allReady) ready.push(o);
+      else if (allReadyOrDone) ready.push(o);
       else active.push(o);
     });
     return { active, ready, completed };
@@ -480,6 +480,27 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
     onUpdate('orders', orderId, { items: newItems });
   };
 
+  const handleMarkAllReady = (orderId) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+    const newItems = order.items.map(item => ({
+      ...item,
+      status: 'Gereed',
+      readyQuantity: item.quantity
+    }));
+    onUpdate('orders', orderId, { items: newItems });
+  };
+
+  const handleMarkAllCompleted = (orderId) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+    const newItems = order.items.map(item => ({
+      ...item,
+      status: 'Afgerond'
+    }));
+    onUpdate('orders', orderId, { items: newItems });
+  };
+
   const OrderTable = ({ list, title, isCompletedSection = false, isReadySection = false }) => (
     <div className="space-y-4">
       <div className="flex items-center gap-3 px-4">
@@ -496,14 +517,15 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
             <tr><th className="px-8 py-4">Klant / Datum</th><th className="px-8 py-4">Items & Voortgang</th><th className="px-8 py-4 text-center">Bedrag</th><th className="px-8 py-4 text-right">Beheer</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-50 font-bold">
-            {list.sort((a,b) => new Date(b.orderDate) - new Date(a.orderDate)).map(o => (
+            {list.sort((a,b) => new Date(a.orderDate) - new Date(b.orderDate)).map(o => (
               <tr key={o.id} className="hover:bg-slate-50/30 transition-colors group">
                 <td className="px-8 py-5">
                   <div className="flex items-center gap-2">
                     <p className="text-slate-900 font-bold text-sm">{o.customer}</p>
                     {o.messengerLink && <a href={o.messengerLink} target="_blank" rel="noreferrer" className="text-purple-500 hover:text-purple-700"><MessageCircle size={14}/></a>}
                   </div>
-                  <p className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">{o.orderDate} {o.orderTime}</p>
+                  <p className="text-[9px] text-slate-400 uppercase font-black tracking-tighter mb-1">{o.orderDate} {o.orderTime}</p>
+                  {o.comments && <p className="text-[10px] text-slate-500 font-medium italic mt-1 line-clamp-1 group-hover:line-clamp-none">{o.comments}</p>}
                 </td>
                 <td className="px-8 py-5">
                    <div className="space-y-3">
@@ -535,7 +557,13 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                 <td className="px-8 py-5 text-slate-900 font-black italic text-center">
                    €{(o.items || []).reduce((s, i) => s + (Number(i.price) * Number(i.quantity)), 0).toFixed(2)}
                 </td>
-                <td className="px-8 py-5 text-right flex justify-end gap-1">
+                <td className="px-8 py-5 text-right flex justify-end items-center gap-2">
+                  {!isCompletedSection && !isReadySection && (
+                    <button onClick={() => handleMarkAllReady(o.id)} className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl text-[9px] font-black uppercase hover:bg-emerald-100 transition-colors border-none appearance-none cursor-pointer">Alles Gereed</button>
+                  )}
+                  {isReadySection && (
+                    <button onClick={() => handleMarkAllCompleted(o.id)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-slate-200 transition-colors border-none appearance-none cursor-pointer">Alles Afronden</button>
+                  )}
                   <button onClick={() => { setEditingId(o.id); setFormData(o); setShowModal(true); }} className="p-2 text-slate-400 hover:text-purple-600 bg-transparent border-none appearance-none cursor-pointer transition-colors"><Edit3 size={16}/></button>
                   <button onClick={() => onDelete('orders', o.id)} className="p-2 text-slate-400 hover:text-rose-500 bg-transparent border-none appearance-none cursor-pointer transition-colors"><Trash2 size={16}/></button>
                 </td>
@@ -598,6 +626,10 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                    </div>
                  </div>
                ))}
+             </div>
+             <div className="space-y-1 mt-4">
+               <label className="text-[9px] font-black uppercase text-slate-600 tracking-widest ml-3">Opmerkingen</label>
+               <textarea rows="2" className="w-full p-4 bg-slate-50 rounded-[1.5rem] border-none font-medium text-slate-700 shadow-inner outline-none focus:bg-slate-100 transition-all appearance-none" value={formData.comments} onChange={e => setFormData({...formData, comments: e.target.value})} placeholder="Extra informatie over de bestelling..." />
              </div>
           </div>
           <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Opslaan</button>
@@ -811,4 +843,4 @@ function Modal({ title, children, onClose }) {
       </div>
     </div>
   );
-}B
+}
