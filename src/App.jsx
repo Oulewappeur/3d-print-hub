@@ -141,8 +141,7 @@ export default function App() {
             <button 
               key={key} 
               onClick={() => setActiveTab(tab)} 
-              style={{ backgroundColor: activeTab === tab ? '#9333ea' : 'transparent' }}
-              className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none focus:outline-none focus:ring-0 appearance-none select-none ${activeTab === tab ? 'text-white shadow-lg shadow-purple-200' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600 font-bold'}`}
+              className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none focus:outline-none focus:ring-0 appearance-none select-none ${activeTab === tab ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600 font-bold'}`}
             >
               <span className="text-sm font-bold uppercase tracking-tight">{tab}</span>
             </button>
@@ -371,13 +370,12 @@ function DasLoodsSection({ orders, products, filaments, onAdd, onUpdate, onDelet
   const [subTab, setSubTab] = useState('Bestellingen');
   return (
     <div className="space-y-10 animate-in fade-in duration-500">
-      <div className="flex items-center gap-3 bg-slate-100 p-1.5 rounded-2xl w-fit">
+      <div className="flex items-center gap-3 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200 shadow-inner">
         {['Bestellingen', 'Producten'].map(t => (
           <button 
             key={t}
             onClick={() => setSubTab(t)}
-            style={{ backgroundColor: subTab === t ? '#9333ea' : 'transparent' }}
-            className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all border-none outline-none appearance-none cursor-pointer ${subTab === t ? 'text-white shadow-lg shadow-purple-200' : 'text-slate-700 hover:text-purple-600 font-bold'}`}
+            className={`px-10 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all border-none outline-none appearance-none cursor-pointer ${subTab === t ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-purple-600'}`}
           >
             {t}
           </button>
@@ -579,8 +577,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
     <div className="space-y-10 animate-in fade-in duration-500">
       <button 
         onClick={() => { setEditingId(null); setFormData({ customer: isDasLoodsFilter ? 'Das Loods' : '', messengerLink: '', orderDate: new Date().toISOString().split('T')[0], orderTime: new Date().toTimeString().slice(0,5), items: [{ productId: '', quantity: 1, readyQuantity: 0, price: '', status: 'In de wacht' }], comments: '', isDasLoods: isDasLoodsFilter }); setShowModal(true); }} 
-        style={{ backgroundColor: '#9333ea' }}
-        className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-xl border-none appearance-none cursor-pointer transition-all hover:bg-purple-700"
+        className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-xl border-none appearance-none cursor-pointer transition-all hover:bg-purple-700"
       >
         <Plus size={18} className="inline mr-2" strokeWidth={3} /> {isDasLoodsFilter ? 'Das Loods Order' : 'Bestelling Invoeren'}
       </button>
@@ -632,7 +629,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                <textarea rows="2" className="w-full p-4 bg-slate-50 rounded-[1.5rem] border-none font-medium text-slate-700 shadow-inner outline-none focus:bg-slate-100 transition-all appearance-none" value={formData.comments} onChange={e => setFormData({...formData, comments: e.target.value})} placeholder="Extra informatie over de bestelling..." />
              </div>
           </div>
-          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Opslaan</button>
+          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -658,8 +655,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
     <div className="space-y-6 animate-in fade-in duration-500">
       <button 
         onClick={() => { setEditingId(null); setFormData({name:'', filaments:[], suggestedPrice:'', timeH:0, timeM:0, isDasLoods: isDasLoodsFilter }); setShowModal(true); }} 
-        style={{ backgroundColor: '#9333ea' }}
-        className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none appearance-none cursor-pointer transition-all hover:bg-purple-700"
+        className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none appearance-none cursor-pointer transition-all hover:bg-purple-700"
       >
         <Plus size={18} className="inline mr-2" strokeWidth={3} /> {isDasLoodsFilter ? 'Nieuw Das Loods Product' : 'Nieuw Product'}
       </button>
@@ -732,8 +728,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                     <button 
                       type="button" 
                       onClick={() => setFormData({...formData, filaments: assign ? formData.filaments.filter(f => f.key !== type.key) : [...formData.filaments, {key: type.key, weight: 0}]})} 
-                      style={{ backgroundColor: assign ? '#9333ea' : '#fff' }}
-                      className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none appearance-none cursor-pointer transition-all ${assign ? 'text-white shadow-md shadow-purple-100' : 'text-slate-600 font-bold shadow-sm'}`}
+                      className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none appearance-none cursor-pointer transition-all ${assign ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-slate-600 font-bold shadow-sm'}`}
                     >
                       <div className="w-2.5 h-2.5 rounded-full border-none shadow-sm" style={{backgroundColor: type.color}}></div> {type.brand} {type.materialType} {type.colorName}
                     </button>
@@ -744,7 +739,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
             </div>
           </div>
           <Input label="Verkoopprijs (€)" type="number" step="0.01" value={formData.suggestedPrice} onChange={e => setFormData({...formData, suggestedPrice: e.target.value})} required />
-          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Opslaan</button>
+          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all">Opslaan</button>
         </form>
       </Modal>}
     </div>
@@ -828,8 +823,7 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
             setFormData({ brand: '', materialType: 'PLA', colorName: '', colorCode: '#9333ea', totalWeight: 1000, price: '', purchaseDate: new Date().toISOString().split('T')[0], shop: '', quantity: 1 }); 
             setShowModal(true); 
           }} 
-          style={{ backgroundColor: '#9333ea' }}
-          className="text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none appearance-none cursor-pointer hover:bg-purple-700 transition-all"
+          className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black uppercase italic shadow-lg border-none appearance-none cursor-pointer hover:bg-purple-700 transition-all"
         >+ Rol Toevoegen</button>
         <button onClick={() => setArchived(!archived)} className="text-[10px] font-black uppercase text-slate-600 border-none appearance-none bg-transparent cursor-pointer hover:text-purple-600 transition-colors tracking-widest">{archived ? 'Toon Actief' : 'Toon Leeg'}</button>
       </div>
@@ -853,10 +847,10 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                   {expanded[k] && g.rolls.map(r => (
                     <tr key={r.id} className="bg-slate-50/30 border-l-4 border-purple-500 animate-in slide-in-from-left-2">
                       <td colSpan="1" className="px-10 py-4">
-                        <p className="uppercase text-slate-400 font-black tracking-widest text-[9px] mb-1">Rol #{r.id.slice(-4)}</p>
-                        <div className="space-y-1.5 mt-2">
+                        <p className="uppercase text-slate-900 font-black tracking-widest text-[10px] mb-2 leading-none">Rol #{r.id.slice(-4)}</p>
+                        <div className="space-y-1.5 border-t border-slate-200 pt-2">
                           <div className="flex items-center gap-2 text-[10px] text-slate-600 font-black">
-                            <Store size={14} className="text-purple-500" /> <span className="uppercase tracking-tight">{r.shop || 'Geen winkel opgegeven'}</span>
+                            <Store size={14} className="text-purple-500" /> <span className="uppercase tracking-tight">{r.shop || 'Geen winkel'}</span>
                           </div>
                           <div className="flex items-center gap-2 text-[10px] text-emerald-600 font-black">
                             <Euro size={14} className="text-emerald-500" /> €{Number(r.price)?.toFixed(2) || '0.00'}
@@ -880,11 +874,14 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                         </div>
                         <p className="text-[8px] text-slate-400 mt-1 uppercase font-black">Enter om op te slaan</p>
                       </td>
-                      <td className="px-8 py-4 font-black italic text-slate-800">{Math.round(Number(r.totalWeight) - (Number(r.usedWeight) || 0))}g / {r.totalWeight}g</td>
-                      <td className="px-8 py-4 text-right flex justify-end gap-2">
-                        <button onClick={() => { setEditingId(r.id); setFormData(r); setShowModal(true); }} className="p-2.5 bg-white rounded-xl shadow-sm text-slate-500 hover:text-purple-600 appearance-none border-none cursor-pointer transition-all active:scale-95"><Edit3 size={16}/></button>
-                        {r.status === 'actief' && <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2.5 bg-white rounded-xl shadow-sm text-slate-500 hover:text-blue-500 appearance-none border-none cursor-pointer transition-all active:scale-95"><Archive size={16}/></button>}
-                        <button onClick={() => deleteItem('filaments', r.id)} className="p-2.5 bg-white rounded-xl shadow-sm text-slate-200 hover:text-rose-500 appearance-none border-none cursor-pointer transition-all active:scale-95"><Trash2 size={16}/></button>
+                      <td className="px-8 py-4 font-black italic text-slate-800">
+                         <div className="text-sm">{Math.round(Number(r.totalWeight) - (Number(r.usedWeight) || 0))}g / {r.totalWeight}g</div>
+                         <div className="text-[8px] text-slate-400 uppercase tracking-widest mt-0.5">Resterend</div>
+                      </td>
+                      <td className="px-8 py-4 text-right flex justify-end gap-2 items-center h-full pt-6">
+                        <button onClick={() => { setEditingId(r.id); setFormData(r); setShowModal(true); }} className="p-2.5 bg-white rounded-xl shadow-sm text-slate-500 hover:text-purple-600 appearance-none border border-slate-100 cursor-pointer transition-all active:scale-95"><Edit3 size={16}/></button>
+                        {r.status === 'actief' && <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2.5 bg-white rounded-xl shadow-sm text-slate-500 hover:text-blue-500 appearance-none border border-slate-100 cursor-pointer transition-all active:scale-95"><Archive size={16}/></button>}
+                        <button onClick={() => deleteItem('filaments', r.id)} className="p-2.5 bg-white rounded-xl shadow-sm text-slate-200 hover:text-rose-500 appearance-none border border-slate-100 cursor-pointer transition-all active:scale-95"><Trash2 size={16}/></button>
                       </td>
                     </tr>
                   ))}
@@ -914,7 +911,7 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
               <input type="color" className="w-full h-[54px] p-2 bg-slate-50 rounded-[1.5rem] border-none shadow-inner cursor-pointer" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} />
             </div>
           </div>
-          <button type="submit" style={{ backgroundColor: '#9333ea' }} className="w-full py-4 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all active:scale-[0.98]">
+          <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all active:scale-[0.98]">
             {editingId ? 'Wijzigingen Opslaan' : 'Rollen Toevoegen'}
           </button>
         </form>
@@ -930,7 +927,7 @@ function SettingsPanel({ settings, onSave }) {
       <h2 className="text-2xl font-black italic uppercase text-purple-600 tracking-tighter">Instellingen</h2>
       <Input label="Prijs p/kWh (€)" type="number" step="0.01" value={temp.kwhPrice} onChange={e => setTemp({...temp, kwhPrice: Number(e.target.value)})} />
       <Input label="Printer Verbruik (W)" type="number" value={temp.printerWattage} onChange={e => setTemp({...temp, printerWattage: Number(e.target.value)})} />
-      <button onClick={() => onSave(temp)} style={{ backgroundColor: '#9333ea' }} className="w-full py-5 text-white rounded-2xl font-black uppercase shadow-xl border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all active:scale-[0.98]">Instellingen Opslaan</button>
+      <button onClick={() => onSave(temp)} className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-xl border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all active:scale-[0.98]">Instellingen Opslaan</button>
     </div>
   );
 }
