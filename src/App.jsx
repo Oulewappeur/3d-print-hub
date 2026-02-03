@@ -40,7 +40,8 @@ import {
   Hash,
   Store,
   Euro,
-  Tag
+  Tag,
+  Calendar
 } from 'lucide-react';
 
 // Firebase Configuratie
@@ -364,7 +365,7 @@ function Dashboard({ orders, products, filaments, settings }) {
                           <p className="text-[9px] font-black uppercase text-slate-400">{item.info?.colorName || item.key}</p>
                        </div>
                     </div>
-                    <p className="text-sm font-black text-slate-600 italic">{Math.round(item.weight)}g</p>
+                    <p className="text-sm font-black text-purple-600 italic">{Math.round(item.weight)}g</p>
                  </div>
              ))}
           </div>
@@ -570,7 +571,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                     {!isCompletedSection && !isReadySection && (
                       <button 
                         onClick={() => handleMarkAllReady(o.id)} 
-                        className="px-3 py-1.5 border border-purple-600 text-purple-600 rounded-xl text-[9px] font-black uppercase hover:bg-purple-600 hover:text-white transition-all appearance-none cursor-pointer"
+                        className="px-3 py-1.5 border border-purple-600 text-purple-600 rounded-xl text-[9px] font-black uppercase hover:bg-purple-600 hover:text-white transition-all appearance-none cursor-pointer font-black"
                       >
                         Alles Gereed
                       </button>
@@ -578,7 +579,7 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                     {isReadySection && (
                       <button 
                         onClick={() => handleMarkAllCompleted(o.id)} 
-                        className="px-3 py-1.5 border border-slate-600 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-slate-600 hover:text-white transition-all appearance-none cursor-pointer"
+                        className="px-3 py-1.5 border border-slate-600 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-slate-600 hover:text-white transition-all appearance-none cursor-pointer font-black"
                       >
                         Alles Afronden
                       </button>
@@ -896,6 +897,9 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                           <div className="flex items-center gap-2 text-[10px] text-emerald-700 font-black">
                             <Euro size={14} className="text-emerald-500" /> <span className="uppercase tracking-tight">Prijs: €{Number(r.price)?.toFixed(2) || '0.00'}</span>
                           </div>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-600 font-black">
+                            <Calendar size={14} className="text-purple-500" /> <span className="uppercase tracking-tight">Gekocht: {r.purchaseDate || '??'}</span>
+                          </div>
                         </div>
                       </td>
                       <td className="px-8 py-4">
@@ -963,11 +967,12 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
           </div>
           <Input label="Winkel / Shop" value={formData.shop} onChange={e => setFormData({...formData, shop: e.target.value})} placeholder="Waar heb je dit gekocht?" />
           <div className="grid grid-cols-2 gap-4">
+            <Input label="Aankoop Datum" type="date" value={formData.purchaseDate} onChange={e => setFormData({...formData, purchaseDate: e.target.value})} required />
             {!editingId && <Input label="Aantal Rollen" type="number" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} />}
-            <div className="space-y-1">
-              <label className="text-[9px] font-black uppercase text-slate-400 ml-3 block tracking-widest font-black">Kleur Kiezen</label>
-              <input type="color" className="w-full h-[54px] p-2 bg-slate-50 rounded-[1.5rem] border border-purple-100 shadow-inner cursor-pointer" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} />
-            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[9px] font-black uppercase text-slate-400 ml-3 block tracking-widest font-black">Kleur Kiezen</label>
+            <input type="color" className="w-full h-[54px] p-2 bg-slate-50 rounded-[1.5rem] border border-purple-100 shadow-inner cursor-pointer" value={formData.colorCode} onChange={e => setFormData({...formData, colorCode: e.target.value})} />
           </div>
           <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase shadow-lg border-none appearance-none cursor-pointer italic hover:bg-purple-700 transition-all active:scale-[0.98]">
             {editingId ? 'Wijzigingen Opslaan' : 'Rollen Toevoegen'}
