@@ -141,9 +141,9 @@ export default function App() {
             <button 
               key={key} 
               onClick={() => setActiveTab(tab)} 
-              className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none focus:outline-none focus:ring-0 appearance-none select-none ${activeTab === tab ? 'bg-purple-600 text-white shadow-lg shadow-purple-200 font-black' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600 font-bold'}`}
+              className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all border-none outline-none focus:outline-none focus:ring-0 appearance-none select-none ${activeTab === tab ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600 font-bold'}`}
             >
-              <span className="text-sm uppercase tracking-tight">{tab}</span>
+              <span className="text-sm font-bold uppercase tracking-tight">{tab}</span>
             </button>
           ))}
         </div>
@@ -184,7 +184,7 @@ function Dashboard({ orders, products, filaments, settings }) {
       const key = `${f.brand}-${f.materialType}-${f.colorName}`;
       const remaining = (Number(f.totalWeight) || 0) - (Number(f.usedWeight) || 0);
       if (!filamentKeyStockRemaining[key]) filamentKeyStockRemaining[key] = 0;
-      filamentKeyStockRemaining[key] = (filamentKeyStockRemaining[key] || 0) + remaining;
+      filamentKeyStockRemaining[key] += remaining;
     });
 
     const regularOrders = orders.filter(o => !o.isDasLoods);
@@ -375,7 +375,7 @@ function DasLoodsSection({ orders, products, filaments, onAdd, onUpdate, onDelet
           <button 
             key={t}
             onClick={() => setSubTab(t)}
-            className={`px-10 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all border-none outline-none appearance-none cursor-pointer ${subTab === t ? 'bg-purple-600 text-white shadow-lg font-black' : 'text-slate-500 hover:text-purple-600 font-bold'}`}
+            className={`px-10 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all border-none outline-none appearance-none cursor-pointer ${subTab === t ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-purple-600'}`}
           >
             {t}
           </button>
@@ -556,10 +556,10 @@ function OrderList({ orders, products, onAdd, onUpdate, onDelete, isDasLoodsFilt
                   </td>
                   <td className="px-8 py-5 text-right flex justify-end items-center gap-2">
                     {!isCompletedSection && !isReadySection && (
-                      <button onClick={() => handleMarkAllReady(o.id)} className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl text-[9px] font-black uppercase hover:bg-emerald-100 transition-colors border-none appearance-none cursor-pointer font-black">Alles Gereed</button>
+                      <button onClick={() => handleMarkAllReady(o.id)} className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl text-[9px] font-black uppercase hover:bg-emerald-100 transition-colors border-none appearance-none cursor-pointer">Alles Gereed</button>
                     )}
                     {isReadySection && (
-                      <button onClick={() => handleMarkAllCompleted(o.id)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-slate-200 transition-colors border-none appearance-none cursor-pointer font-black">Alles Afronden</button>
+                      <button onClick={() => handleMarkAllCompleted(o.id)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-slate-200 transition-colors border-none appearance-none cursor-pointer">Alles Afronden</button>
                     )}
                     <button onClick={() => { setEditingId(o.id); setFormData(o); setShowModal(true); }} className="p-2 text-slate-400 hover:text-purple-600 bg-transparent border-none appearance-none cursor-pointer transition-colors"><Edit3 size={16}/></button>
                     <button onClick={() => onDelete('orders', o.id)} className="p-2 text-slate-400 hover:text-rose-500 bg-transparent border-none appearance-none cursor-pointer transition-colors"><Trash2 size={16}/></button>
@@ -728,7 +728,7 @@ function ProductList({ products, filaments, orders, onAdd, onUpdate, onDelete, s
                     <button 
                       type="button" 
                       onClick={() => setFormData({...formData, filaments: assign ? formData.filaments.filter(f => f.key !== type.key) : [...formData.filaments, {key: type.key, weight: 0}]})} 
-                      className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none appearance-none cursor-pointer transition-all ${assign ? 'bg-purple-600 text-white shadow-md font-black' : 'bg-white text-slate-600 font-bold shadow-sm'}`}
+                      className={`flex-1 p-3 rounded-xl text-[9px] font-black uppercase flex items-center gap-3 border-none appearance-none cursor-pointer transition-all ${assign ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-slate-600 font-bold shadow-sm'}`}
                     >
                       <div className="w-2.5 h-2.5 rounded-full border-none shadow-sm" style={{backgroundColor: type.color}}></div> {type.brand} {type.materialType} {type.colorName}
                     </button>
@@ -849,11 +849,11 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                       <td colSpan="1" className="px-10 py-4">
                         <p className="uppercase text-slate-900 font-black tracking-widest text-[10px] mb-2 leading-none">Rol #{r.id.slice(-4)}</p>
                         <div className="space-y-1.5 border-t border-slate-200 pt-2">
-                          <div className="flex items-center gap-2 text-[10px] text-slate-800 font-black">
-                            <Store size={14} className="text-purple-500" /> <span className="uppercase tracking-tight">Winkel: {r.shop || '??'}</span>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-600 font-black">
+                            <Store size={14} className="text-purple-500" /> <span className="uppercase tracking-tight">{r.shop || 'Geen winkel'}</span>
                           </div>
-                          <div className="flex items-center gap-2 text-[10px] text-emerald-700 font-black">
-                            <Euro size={14} className="text-emerald-500" /> <span className="uppercase tracking-tight">Prijs: €{Number(r.price)?.toFixed(2) || '0.00'}</span>
+                          <div className="flex items-center gap-2 text-[10px] text-emerald-600 font-black">
+                            <Euro size={14} className="text-emerald-500" /> €{Number(r.price)?.toFixed(2) || '0.00'}
                           </div>
                         </div>
                       </td>
@@ -879,9 +879,9 @@ function StockTable({ filaments, onAdd, onUpdate, onDelete }) {
                          <div className="text-[8px] text-slate-400 uppercase tracking-widest mt-0.5">Resterend</div>
                       </td>
                       <td className="px-8 py-4 text-right flex justify-end gap-2 items-center h-full pt-6">
-                        <button onClick={() => { setEditingId(r.id); setFormData(r); setShowModal(true); }} className="p-2.5 bg-purple-600 rounded-xl shadow-sm text-white appearance-none border-none cursor-pointer transition-all active:scale-95"><Edit3 size={16}/></button>
-                        {r.status === 'actief' && <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2.5 bg-slate-100 rounded-xl shadow-sm text-slate-500 hover:text-blue-500 appearance-none border border-slate-200 cursor-pointer transition-all active:scale-95"><Archive size={16}/></button>}
-                        <button onClick={() => deleteItem('filaments', r.id)} className="p-2.5 bg-slate-100 rounded-xl shadow-sm text-slate-200 hover:text-rose-500 appearance-none border border-slate-200 cursor-pointer transition-all active:scale-95"><Trash2 size={16}/></button>
+                        <button onClick={() => { setEditingId(r.id); setFormData(r); setShowModal(true); }} className="p-2.5 bg-white rounded-xl shadow-sm text-slate-500 hover:text-purple-600 appearance-none border border-slate-100 cursor-pointer transition-all active:scale-95"><Edit3 size={16}/></button>
+                        {r.status === 'actief' && <button onClick={() => onUpdate('filaments', r.id, {status: 'leeg'})} className="p-2.5 bg-white rounded-xl shadow-sm text-slate-500 hover:text-blue-500 appearance-none border border-slate-100 cursor-pointer transition-all active:scale-95"><Archive size={16}/></button>}
+                        <button onClick={() => deleteItem('filaments', r.id)} className="p-2.5 bg-white rounded-xl shadow-sm text-slate-200 hover:text-rose-500 appearance-none border border-slate-100 cursor-pointer transition-all active:scale-95"><Trash2 size={16}/></button>
                       </td>
                     </tr>
                   ))}
